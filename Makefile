@@ -1,6 +1,6 @@
 # BPF objects for this project.
 #
-#   make bpf     compile bpf/*.bpf.c into bin/app.bpf.o
+#   make bpf     link every bpf/<name>/ directory into bin/<name>.bpf.o
 #   make clean-bpf
 #   make veristat  load the object and let this kernel's verifier judge it
 #

@@ -416,6 +416,3 @@ buffer held before — a response head where curl's body should be.
   decoder's `Host` header is the authority for naming a service.
 - HTTP/2 is decoded when its plaintext is seen (the TLS taps, or h2c on
   the wire). Server push is followed; HTTP/3 (QUIC) is not seen at all.
-- The `app/procs`, `app/execs`, `app/lib/exec.js`, `app/lib/ExecFilter.jsx`
-  and `bpf/exec.bpf.c` files are the yeetkit template's example and can be
-  removed.
