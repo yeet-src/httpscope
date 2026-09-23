@@ -34,8 +34,12 @@ function Row(props) {
         <span class={`w-8 shrink-0 ${tone(t().status)}`}>{t().status ?? "–"}</span>
         <span class="w-16 shrink-0 text-right text-cyan">{duration(t().duration)}</span>
         <span class="w-12 shrink-0 text-magenta">{t().method}</span>
-        <span class="text-dim">{t().service}</span>
-        <span class="min-w-0 flex-1 truncate">{t().target}</span>
+        <span class="w-48 shrink-0 truncate text-dim" title={t().service}>
+          {t().service}
+        </span>
+        <span class="min-w-0 flex-1 truncate" title={t().target}>
+          {t().target}
+        </span>
         <span class="shrink-0 text-dim">
           {transport(t().transport)} {t().comm ? `${t().comm}:${t().pid}` : t().pid ? `pid ${t().pid}` : ""}
           {t().complete ? "" : ` cut: ${t().cut}`}
