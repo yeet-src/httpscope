@@ -45,11 +45,21 @@
   /* `;;` lines, in the green a terminal would use for them. */
   --color-comment: #00ff00;
 
-  /* Whatever the machine has. A webfont would be one more thing to
-   * load before the first frame, and a box with a good mono installed
-   * should simply use it. */
-  --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo,
-    Consolas, monospace;
+  /* The IBM VGA 9×16 text-mode font, from VileR's Oldschool PC Font
+   * Pack (int10h.org, CC BY-SA 4.0; public/fonts/LICENSE.txt). A bitmap
+   * face: it is drawn for a 16px cell and every size below sets the
+   * type at that cell so the pixels land. The machine's mono is the
+   * fallback while it loads. */
+  --font-mono: "IBM VGA 9x16", "JetBrains Mono", "IBM Plex Mono", ui-monospace, "SFMono-Regular",
+    Menlo, Consolas, monospace;
+}
+
+@font-face {
+  font-family: "IBM VGA 9x16";
+  src: url("/fonts/WebPlus_IBM_VGA_9x16.woff") format("woff");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
 }
 
 
@@ -64,9 +74,12 @@ body {
   background: var(--color-bg);
   color: var(--color-fg);
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.45;
+  /* The face's native cell; a bitmap font blurs at any other size. */
+  font-size: 16px;
+  line-height: 1.125; /* 18px: one pixel row of air above and below the cell */
   font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
 }
 
 /* Dense tables: one rule under the header, hairline rows, numbers right
@@ -93,8 +106,8 @@ tbody tr {
   border-bottom: 1px solid color-mix(in srgb, var(--color-rule) 55%, transparent);
 }
 pre {
-  font-size: 11px;
-  line-height: 1.4;
+  font-size: 16px;
+  line-height: 1.125;
 }
 
 ::selection {
