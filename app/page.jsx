@@ -6,7 +6,8 @@
  */
 import { For, Link, createSignal, onCleanup } from "yeetkit";
 
-import { ago, driftTone } from "@/lib/fmt.js";
+import DriftTable from "@/lib/DriftTable.jsx";
+import { ago } from "@/lib/fmt.js";
 import { overview } from "@/lib/scope.js";
 
 export default function Home() {
@@ -99,14 +100,7 @@ export default function Home() {
         <h2 class="comment">
           recent drift · <Link href="/drift" end class="text-blue hover:underline">[all, live]</Link>
         </h2>
-        <For each={view().drift} fallback={<p class="text-dim">none yet</p>}>
-          {(e) => (
-            <p class="truncate">
-              <span class="text-dim">{ago(e.at)}</span> <span class={driftTone(e.kind)}>{e.kind}</span>{" "}
-              <span class="text-dim">{e.service}</span> {e.method} {e.path} <span class="text-dim">{e.detail}</span>
-            </p>
-          )}
-        </For>
+        <DriftTable events={() => view().drift} />
       </div>
       </div>
     </section>

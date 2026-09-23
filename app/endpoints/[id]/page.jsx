@@ -2,7 +2,8 @@
  * statistics; the drift that touched it. */
 import { For, Link, Show, createEffect, createSignal, onCleanup } from "yeetkit";
 
-import { ago, bytes, driftTone, ms, statuses } from "@/lib/fmt.js";
+import DriftTable from "@/lib/DriftTable.jsx";
+import { ago, bytes, ms, statuses } from "@/lib/fmt.js";
 import { endpointDetail, recentTransactions } from "@/lib/scope.js";
 
 const RECENT = 10;
@@ -136,13 +137,7 @@ export default function EndpointPage(props) {
 
             <div class="space-y-1">
               <h2 class="comment">drift</h2>
-              <For each={e().drift} fallback={<p class="text-dim">none</p>}>
-                {(d) => (
-                  <p class="truncate">
-                    <span class="text-dim">{ago(d.at)}</span> <span class={driftTone(d.kind)}>{d.kind}</span> <span class="text-dim">{d.detail}</span>
-                  </p>
-                )}
-              </For>
+              <DriftTable events={() => e().drift} where={false} empty="none" />
             </div>
           </>
         )}

@@ -98,7 +98,7 @@ export class Model {
       ep = new Endpoint({ role, service, method, segments: shaped, at });
       this.endpointsByKey.set(key, ep);
       this.service(role, service).endpoints.add(key);
-      events.push({ kind: "endpoint.new", detail: `${method} ${ep.template}` });
+      events.push({ kind: "endpoint.new", detail: "first seen" });
     }
     const svc = this.service(role, service);
     svc.transactions++;
