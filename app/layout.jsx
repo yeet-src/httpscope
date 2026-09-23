@@ -28,7 +28,10 @@ export default function Layout(props) {
               {name}
             </Link>
           ))}
-          <a href="/api" class="ml-auto text-dim hover:text-fg">
+          {/* A plain page served by Node, not a route in the isolate: the
+              client intercepts same-origin anchors as navigation unless
+              they open elsewhere, so this opens a tab. */}
+          <a href="/api" target="_blank" rel="noopener" class="ml-auto text-dim hover:text-fg">
             [api]
           </a>
         </nav>

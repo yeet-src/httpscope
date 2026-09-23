@@ -83,7 +83,7 @@ export default function Transactions() {
     <section class="space-y-4">
       <h1 class="comment">
         transactions — the last {SHOWN}, newest first · [+] opens headers and bodies ·{" "}
-        <a href="/api" class="text-blue hover:underline">
+        <a href="/api" target="_blank" rel="noopener" class="text-blue hover:underline">
           [query them]
         </a>
       </h1>
