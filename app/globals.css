@@ -55,7 +55,7 @@
 
 @font-face {
   font-family: "Spleen 6x12";
-  src: url("/fonts/spleen-6x12.otf") format("opentype");
+  src: url("/fonts/spleen-6x12.woff2") format("woff2");
   font-weight: normal;
   font-style: normal;
   font-display: swap;
