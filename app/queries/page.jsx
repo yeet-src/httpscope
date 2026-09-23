@@ -7,6 +7,7 @@
 import { For, Show, createSignal, onCleanup } from "yeetkit";
 
 import { bytes, clock, duration } from "@/lib/fmt.js";
+import { Body } from "@/lib/Highlight.jsx";
 import { format, inlineMarkdown, prettyJson, tone as tokenTone } from "@/lib/gql.js";
 import { queryStream, recentQueries } from "@/lib/scope.js";
 
@@ -84,7 +85,7 @@ function Row(props) {
             </Show>
             {/* While it runs, the answer is whatever the model has said so far;
                 once done, the result itself. */}
-            <Show when={q().state === "running"} fallback={<Show when={q().preview}><pre class="max-h-[40rem] overflow-auto whitespace-pre-wrap break-words text-green">{prettyJson(q().preview)}</pre></Show>}>
+            <Show when={q().state === "running"} fallback={<Show when={q().preview}><Body text={prettyJson(q().preview)} class="max-h-[40rem] overflow-auto" /></Show>}>
               <Show when={q().stream} fallback={<p class="text-dim">…</p>}>
                 <pre class="max-h-[40rem] overflow-auto whitespace-pre-wrap break-words text-green">
                   {q().stream}

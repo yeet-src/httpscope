@@ -367,6 +367,12 @@ export const tone = (type) =>
     "js-row": "text-cyan",
     "js-ident": "text-fg",
     "js-punct": "text-dim",
+    "json-key": "text-cyan",
+    "json-string": "text-green",
+    "json-number": "text-yellow",
+    "json-literal": "text-magenta",
+    "json-punct": "text-dim",
+    "json-text": "text-fg",
   })[type] ?? "text-fg";
 
 /**
@@ -406,3 +412,63 @@ export function prettyJson(text) {
     return text;
   }
 }
+
+/** JSON cut into coloured tokens: json-key, json-string, json-number, json-literal, json-punct, space. Lenient: colours what it can. */
+export function tokenizeJson(text) {
+  const out = [];
+  const s = String(text ?? "");
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (/\s/.test(c)) {
+      let j = i;
+      while (j < s.length && /\s/.test(s[j])) j++;
+      out.push({ type: "space", text: s.slice(i, j) });
+      i = j;
+      continue;
+    }
+    if (c === '"') {
+      let j = i + 1;
+      while (j < s.length && s[j] !== '"') {
+        if (s[j] === "\\") j++;
+        j++;
+      }
+      const end = Math.min(j + 1, s.length);
+      let k = end;
+      while (k < s.length && /\s/.test(s[k])) k++;
+      out.push({ type: s[k] === ":" ? "json-key" : "json-string", text: s.slice(i, end) });
+      i = end;
+      continue;
+    }
+    if (/[-0-9]/.test(c)) {
+      let j = i + 1;
+      while (j < s.length && /[0-9.eE+-]/.test(s[j])) j++;
+      out.push({ type: "json-number", text: s.slice(i, j) });
+      i = j;
+      continue;
+    }
+    const lit = /^(true|false|null)\b/.exec(s.slice(i, i + 5));
+    if (lit) {
+      out.push({ type: "json-literal", text: lit[1] });
+      i += lit[1].length;
+      continue;
+    }
+    if ("{}[]:,".includes(c)) {
+      out.push({ type: "json-punct", text: c });
+      i++;
+      continue;
+    }
+    /* not JSON here: take the run of other characters as plain text */
+    let j = i + 1;
+    while (j < s.length && !/[\s"{}\[\]:,]/.test(s[j])) j++;
+    out.push({ type: "json-text", text: s.slice(i, j) });
+    i = j;
+  }
+  return out;
+}
+
+/** Does this look like JSON (for choosing a highlighter)? */
+export const looksJson = (text) => /^\s*[\[{]/.test(String(text ?? ""));
+
+/** Headers whose values are credentials. */
+export const SENSITIVE_HEADERS = new Set(["authorization", "proxy-authorization", "cookie", "set-cookie", "x-api-key", "x-auth-token"]);

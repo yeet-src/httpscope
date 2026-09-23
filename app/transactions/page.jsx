@@ -7,6 +7,7 @@
  * socket. */
 import { For, Link, Show, createSignal, onCleanup } from "yeetkit";
 
+import { Body, Headers } from "@/lib/Highlight.jsx";
 import { bytes, clock, duration } from "@/lib/fmt.js";
 import { recentTransactions } from "@/lib/scope.js";
 
@@ -43,18 +44,18 @@ function Row(props) {
             <p class="text-dim">
               request · {bytes(t().requestBodyLength)}
             </p>
-            <pre class="whitespace-pre-wrap break-all text-dim">{t().requestHeaders.map(([n, v]) => `${n}: ${v}`).join("\n")}</pre>
+            <Headers headers={t().requestHeaders} />
             <Show when={t().requestBody}>
-              <pre class="max-h-96 overflow-auto whitespace-pre-wrap break-all text-fg">{t().requestBody}</pre>
+              <Body text={t().requestBody} />
             </Show>
           </div>
           <div class="min-w-0 space-y-1">
             <p class="text-dim">
               response · {bytes(t().responseBodyLength)}
             </p>
-            <pre class="whitespace-pre-wrap break-all text-dim">{t().responseHeaders.map(([n, v]) => `${n}: ${v}`).join("\n")}</pre>
+            <Headers headers={t().responseHeaders} />
             <Show when={t().responseBody} fallback={<p class="text-dim">{t().responseBodyLength ? "body not readable (cut, or not text)" : "no body"}</p>}>
-              <pre class="max-h-96 overflow-auto whitespace-pre-wrap break-all text-green">{t().responseBody}</pre>
+              <Body text={t().responseBody} />
             </Show>
           </div>
         </div>

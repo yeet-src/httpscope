@@ -3,6 +3,7 @@
 import { For, Link, Show, createEffect, createSignal, onCleanup } from "yeetkit";
 
 import DriftTable from "@/lib/DriftTable.jsx";
+import { Body as BodyText } from "@/lib/Highlight.jsx";
 import { ago, bytes, clock, ms, statuses } from "@/lib/fmt.js";
 import { endpointDetail, recentTransactions } from "@/lib/scope.js";
 
@@ -21,7 +22,7 @@ const Body = (props) => (
       <pre class="whitespace-pre-wrap text-green">{props.body.shape}</pre>
       <Show when={props.body.example}>
         <p class="text-dim">example</p>
-        <pre class="max-h-64 overflow-auto whitespace-pre-wrap break-all text-fg">{props.body.example}</pre>
+        <BodyText text={props.body.example} class="max-h-64 overflow-auto" />
       </Show>
     </Show>
   </div>
@@ -125,10 +126,12 @@ export default function EndpointPage(props) {
                       <span class="text-cyan">{ms(t.duration)}ms</span> <span class="text-dim">{t.comm ? `${t.comm}:${t.pid}` : ""}</span>
                     </p>
                     <Show when={t.requestBody}>
-                      <pre class="max-h-40 overflow-auto whitespace-pre-wrap break-all text-dim">→ {t.requestBody}</pre>
+                      <p class="text-dim">→ request</p>
+                      <BodyText text={t.requestBody} class="max-h-40 overflow-auto" />
                     </Show>
                     <Show when={t.responseBody} fallback={<p class="text-dim">← {t.responseBodyLength ? "body not readable" : "no body"}</p>}>
-                      <pre class="max-h-60 overflow-auto whitespace-pre-wrap break-all text-green">← {t.responseBody}</pre>
+                      <p class="text-dim">← response</p>
+                      <BodyText text={t.responseBody} class="max-h-60 overflow-auto" />
                     </Show>
                   </div>
                 )}

@@ -75,3 +75,9 @@ test("rootsOf names the top-level fields", () => {
   assert.deepEqual(rootsOf('query Q($s: String!) { services(name: $s) { name } endpoints(where: { path: { like: "*" } }) { path } } | ai { x }'), ["services", "endpoints"]);
   assert.deepEqual(rootsOf("{ summary { transactions } }"), ["summary"]);
 });
+
+test("JSON tokens: keys, strings, numbers, literals", async () => {
+  const { tokenizeJson } = await import("../app/lib/gql.js");
+  const types = tokenizeJson('{"id": 390, "total": "13.50", "ok": true, "x": null}').filter((t) => t.type !== "space").map((t) => t.type);
+  assert.deepEqual(types, ["json-punct", "json-key", "json-punct", "json-number", "json-punct", "json-key", "json-punct", "json-string", "json-punct", "json-key", "json-punct", "json-literal", "json-punct", "json-key", "json-punct", "json-literal", "json-punct"]);
+});
