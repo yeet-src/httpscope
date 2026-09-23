@@ -51,12 +51,14 @@ function Row(props) {
         <span class="w-14 shrink-0 text-right text-cyan">{q().ms != null ? `${ms(q().ms)}ms` : ""}</span>
         <span class="w-12 shrink-0 text-right text-dim">{q().bytes ? bytes(q().bytes) : ""}</span>
         <span class="min-w-0 flex-1 truncate">
-          {oneLine(q().query)}
+          <span class="text-fg">{(q().roots ?? []).join(" ") || "query"}</span>
+          <Show when={q().stages.length}>
+            <span class="text-magenta"> | {q().stages.join(" | ")}</span>
+          </Show>
           <Show when={q().state === "running" && q().stream}>
             <span class="text-green"> ▸ {oneLine(q().stream).slice(-100)}</span>
           </Show>
         </span>
-        <span class="shrink-0 text-magenta">{q().stages.join(" ")}</span>
         <span class="max-w-64 shrink-0 truncate text-dim" title={q().client ?? ""}>
           {q().client ?? "–"}
         </span>

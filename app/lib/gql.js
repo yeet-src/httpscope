@@ -311,6 +311,32 @@ export function tokenizeJs(source) {
   return out;
 }
 
+/** The root fields a document selects: `["endpoints", "services"]` — aliases as written. */
+export function rootsOf(source) {
+  const out = [];
+  let depth = 0;
+  let parens = 0;
+  const tokens = tokenize(source).filter((t) => t.type !== "space" && t.type !== "comment");
+  for (let k = 0; k < tokens.length; k++) {
+    const t = tokens[k];
+    if (t.type === "code" || t.type === "stage") continue;
+    if (t.type === "punct") {
+      if (t.text === "(" || t.text === "[") parens++;
+      else if (t.text === ")" || t.text === "]") parens = Math.max(0, parens - 1);
+      else if (t.text === "{" && parens === 0) depth++;
+      else if (t.text === "}" && parens === 0) depth = Math.max(0, depth - 1);
+      else if (t.text === "|") depth = 0;
+      continue;
+    }
+    if (depth === 1 && parens === 0 && (t.type === "field" || t.type === "arg") && !out.includes(t.text)) {
+      const prev = tokens[k - 1];
+      if (prev?.type === "punct" && (prev.text === ":" || prev.text === "@" || prev.text === "$")) continue;
+      out.push(t.text);
+    }
+  }
+  return out;
+}
+
 /** Formatted text alone. */
 export const pretty = (source) =>
   format(source)

@@ -34,6 +34,7 @@ import { Reassembler, connKeyOf } from "./http/tcp.js";
 import { Model } from "./model/model.js";
 import { filterTransactions } from "./query/filter.js";
 import { rowsFromModel } from "./query/query.js";
+import { rootsOf } from "./gql.js";
 import { attribute } from "./probes/attribute.js";
 import { snapshot as inventory } from "./probes/conns.js";
 import { nsPath, targetFor } from "./probes/discover.js";
@@ -86,6 +87,7 @@ export async function queryStarted({ query, variables = null, client = null, met
     query: String(query ?? "").slice(0, 20_000),
     variables: variables ? JSON.stringify(variables).slice(0, 2000) : null,
     stages: [...String(query ?? "").matchAll(/\|\s*(context|transform|ai)\s*\{/g)].map((m) => m[1]),
+    roots: rootsOf(query),
     state: "running",
     ms: null,
     ok: null,
