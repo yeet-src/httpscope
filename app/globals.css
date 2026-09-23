@@ -45,20 +45,11 @@
   /* `;;` lines, in the green a terminal would use for them. */
   --color-comment: #00ff00;
 
-  /* Spleen 6×12, OpenBSD's console font (Frederic Cambus, BSD 2-clause;
-   * public/fonts/LICENSE-spleen.txt): a bitmap face drawn for a 12px
-   * cell, which is the size this page is set in. The machine's mono
-   * stands in while it loads and for the glyphs it lacks (▲ ▸ •). */
-  --font-mono: "Spleen 6x12", "JetBrains Mono", "IBM Plex Mono", ui-monospace, "SFMono-Regular",
-    Menlo, Consolas, monospace;
-}
-
-@font-face {
-  font-family: "Spleen 6x12";
-  src: url("/fonts/spleen-6x12.otf") format("opentype");
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap;
+  /* Whatever the machine has. A webfont would be one more thing to
+   * load before the first frame, and a box with a good mono installed
+   * should simply use it. */
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo,
+    Consolas, monospace;
 }
 
 
@@ -73,10 +64,9 @@ body {
   background: var(--color-bg);
   color: var(--color-fg);
   font-family: var(--font-mono);
-  font-size: 12px; /* the face's cell: any other size blurs a bitmap */
-  line-height: 1.25; /* 15px: three pixel rows of air per line */
+  font-size: 12px;
+  line-height: 1.45;
   font-variant-numeric: tabular-nums;
-  -webkit-font-smoothing: none;
 }
 
 /* Dense tables: one rule under the header, hairline rows, numbers right
@@ -103,8 +93,8 @@ tbody tr {
   border-bottom: 1px solid color-mix(in srgb, var(--color-rule) 55%, transparent);
 }
 pre {
-  font-size: 12px; /* the same cell; 11px would not be a Spleen size */
-  line-height: 1.25;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 ::selection {

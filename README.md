@@ -36,9 +36,7 @@ the same process, once a second, except drift which is a stream.
 
 The palette is the template's: a terminal's sixteen colours, no boxes,
 structure from whitespace. Colour is never the only channel — a red
-status sits beside its number. The type is Spleen 6×12, OpenBSD's
-console font (Frederic Cambus, BSD 2-clause, `public/fonts/`), at its
-12px cell.
+status sits beside its number.
 
 ```sh
 npm run dev                                # http://localhost:3000
