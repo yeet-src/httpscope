@@ -29,7 +29,7 @@ const Prose = (props) => (
 /* The query, formatted over lines and coloured token by token: GraphQL,
  * then each stage — JavaScript highlighted, an ai instruction as prose. */
 const Query = (props) => (
-  <pre class="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words">
+  <pre class="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words bg-mode px-2 py-1">
     <For each={format(props.text)}>{(t) => (t.type === "prose" ? <Prose text={t.text} /> : <span class={tokenTone(t.type)}>{t.text}</span>)}</For>
   </pre>
 );
@@ -87,7 +87,7 @@ function Row(props) {
                 once done, the result itself. */}
             <Show when={q().state === "running"} fallback={<Show when={q().preview}><Body text={prettyJson(q().preview)} class="max-h-[40rem] overflow-auto" /></Show>}>
               <Show when={q().stream} fallback={<p class="text-dim">…</p>}>
-                <pre class="max-h-[40rem] overflow-auto whitespace-pre-wrap break-words text-green">
+                <pre class="max-h-[40rem] overflow-auto whitespace-pre-wrap break-words bg-mode px-2 py-1 text-green">
                   {q().stream}
                   <span class="caret" />
                 </pre>

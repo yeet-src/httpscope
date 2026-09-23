@@ -31,7 +31,7 @@ export function Headers(props) {
 export function Body(props) {
   const text = () => (looksJson(props.text) ? prettyJson(props.text) : props.text);
   return (
-    <pre class={`whitespace-pre-wrap break-all ${props.class ?? "max-h-96 overflow-auto"}`}>
+    <pre class={`whitespace-pre-wrap break-all bg-mode px-2 py-1 ${props.class ?? "max-h-96 overflow-auto"}`}>
       <Show when={looksJson(props.text)} fallback={<span class="text-fg">{props.text}</span>}>
         <For each={tokenizeJson(text())}>{(t) => <span class={tone(t.type)}>{t.text}</span>}</For>
       </Show>
