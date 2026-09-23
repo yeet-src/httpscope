@@ -6,7 +6,7 @@
  * row is about the same endpoint. */
 import { For, Link } from "yeetkit";
 
-import { ago, driftTone } from "@/lib/fmt.js";
+import { clock, driftTone } from "@/lib/fmt.js";
 
 export default function DriftTable(props) {
   const where = () => props.where !== false;
@@ -15,7 +15,7 @@ export default function DriftTable(props) {
       <table class="w-full">
         <thead class="text-left">
           <tr class="border-b border-rule text-dim">
-            <th class="py-1 pr-5 font-normal">ago</th>
+            <th class="py-1 pr-5 font-normal">time</th>
             <th class="py-1 pr-5 font-normal">kind</th>
             {where() && <th class="py-1 pr-5 font-normal">service</th>}
             {where() && <th class="py-1 pr-5 font-normal">method</th>}
@@ -27,7 +27,7 @@ export default function DriftTable(props) {
           <For each={props.events()} fallback={<tr><td colspan={where() ? 6 : 3} class="py-2 text-dim">{props.empty ?? "none yet"}</td></tr>}>
             {(e) => (
               <tr class="hover:bg-mode">
-                <td class="whitespace-nowrap py-0.5 pr-5 text-right text-dim">{ago(e.at)}</td>
+                <td class="whitespace-nowrap py-0.5 pr-5 text-dim">{clock(e.at)}</td>
                 <td class={`whitespace-nowrap py-0.5 pr-5 ${driftTone(e.kind)}`}>{e.kind}</td>
                 {where() && (
                   <td class="max-w-48 truncate py-0.5 pr-5" title={e.service}>

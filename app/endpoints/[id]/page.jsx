@@ -3,7 +3,7 @@
 import { For, Link, Show, createEffect, createSignal, onCleanup } from "yeetkit";
 
 import DriftTable from "@/lib/DriftTable.jsx";
-import { ago, bytes, ms, statuses } from "@/lib/fmt.js";
+import { ago, bytes, clock, ms, statuses } from "@/lib/fmt.js";
 import { endpointDetail, recentTransactions } from "@/lib/scope.js";
 
 const RECENT = 10;
@@ -121,7 +121,7 @@ export default function EndpointPage(props) {
                 {(t) => (
                   <div class="space-y-1 border-b border-rule/40 pb-2">
                     <p>
-                      <span class="text-dim">{ago(t.at)}</span> <span class={t.status >= 400 ? "text-red" : "text-yellow"}>{t.status ?? "–"}</span> {t.target}{" "}
+                      <span class="text-dim">{clock(t.at)}</span> <span class={t.status >= 400 ? "text-red" : "text-yellow"}>{t.status ?? "–"}</span> {t.target}{" "}
                       <span class="text-cyan">{ms(t.duration)}ms</span> <span class="text-dim">{t.comm ? `${t.comm}:${t.pid}` : ""}</span>
                     </p>
                     <Show when={t.requestBody}>

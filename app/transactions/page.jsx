@@ -7,7 +7,7 @@
  * socket. */
 import { For, Link, Show, createSignal, onCleanup } from "yeetkit";
 
-import { ago, bytes, ms } from "@/lib/fmt.js";
+import { bytes, clock, duration } from "@/lib/fmt.js";
 import { recentTransactions } from "@/lib/scope.js";
 
 const SHOWN = 100;
@@ -26,12 +26,12 @@ function Row(props) {
           toggles the row. */}
       <div role="button" tabindex="0" class="flex w-full cursor-pointer select-text flex-wrap items-baseline gap-x-3 py-0.5 text-left hover:bg-mode" onClick={() => setOpen(!open())} title={open() ? "collapse" : "expand"}>
         <span class="shrink-0 text-blue">{open() ? "[-]" : "[+]"}</span>
-        <span class="w-8 text-dim">{ago(t().at)}</span>
+        <span class="shrink-0 text-dim">{clock(t().at)}</span>
         <span class={`w-8 ${tone(t().status)}`}>{t().status ?? "–"}</span>
         <span class="text-magenta">{t().method}</span>
         <span class="text-dim">{t().service}</span>
         <span class="min-w-0 truncate">{t().target}</span>
-        <span class="ml-auto text-cyan">{ms(t().duration)}ms</span>
+        <span class="ml-auto text-cyan">{duration(t().duration)}</span>
         <span class="text-dim">
           {transport(t().transport)} {t().comm ? `${t().comm}:${t().pid}` : t().pid ? `pid ${t().pid}` : ""}
           {t().complete ? "" : ` cut: ${t().cut}`}

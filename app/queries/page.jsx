@@ -6,7 +6,7 @@
  * row for the full query and the answer. */
 import { For, Show, createSignal, onCleanup } from "yeetkit";
 
-import { ago, bytes, ms } from "@/lib/fmt.js";
+import { bytes, clock, duration } from "@/lib/fmt.js";
 import { format, inlineMarkdown, prettyJson, tone as tokenTone } from "@/lib/gql.js";
 import { queryStream, recentQueries } from "@/lib/scope.js";
 
@@ -46,9 +46,9 @@ function Row(props) {
           toggles the row. */}
       <div role="button" tabindex="0" class="flex w-full cursor-pointer select-text flex-wrap items-baseline gap-x-3 py-0.5 text-left hover:bg-mode" onClick={() => setOpen(!open())} title={open() ? "collapse" : "expand"}>
         <span class="shrink-0 text-blue">{open() ? "[-]" : "[+]"}</span>
-        <span class="w-8 shrink-0 text-right text-dim">{ago(q().at)}</span>
+        <span class="shrink-0 text-dim">{clock(q().at)}</span>
         <span class={`w-20 shrink-0 ${tone(q())}`}>{label(q())}</span>
-        <span class="w-14 shrink-0 text-right text-cyan">{q().ms != null ? `${ms(q().ms)}ms` : ""}</span>
+        <span class="w-16 shrink-0 text-right text-cyan">{q().ms != null ? duration(q().ms) : ""}</span>
         <span class="w-12 shrink-0 text-right text-dim">{q().bytes ? bytes(q().bytes) : ""}</span>
         <span class="min-w-0 flex-1 truncate">
           <span class="text-fg">{(q().roots ?? []).join(" ") || "query"}</span>
@@ -77,7 +77,7 @@ function Row(props) {
               answer
               {q().state === "running" ? (q().stream ? " · the model is writing" : " · waiting") : ""}
               {q().rows ? ` · ${Object.entries(q().rows).map(([k, n]) => `${k}: ${n}`).join(", ")}` : ""}
-              {q().ms != null ? ` · ${ms(q().ms)}ms` : ""}
+              {q().ms != null ? ` · ${duration(q().ms)}` : ""}
             </p>
             <Show when={q().errors.length}>
               <For each={q().errors}>{(e) => <p class="text-red">{e}</p>}</For>
