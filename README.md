@@ -373,6 +373,31 @@ the same `msghdr`, the second round landing after the first), and the
 until it was cast back. Both produced a record holding whatever the
 buffer held before — a response head where curl's body should be.
 
+### Build requirements and portability
+
+- **Toolchain**: `make bpf` fetches a pinned static clang and bpftool
+  for x86_64 or aarch64 (`build/toolchain.mk`), and generates
+  `bpf/include/vmlinux.h` from the build host's kernel BTF. Build on the
+  architecture you run on, as CO-RE projects do.
+- **Kernel header version**: the wire tap and every TLS tap compile
+  against any recent `vmlinux.h`. The legacy socket tap
+  (`bpf/socket`) names `iov_iter.__iov` and `ITER_UBUF`, which exist
+  from kernel 6.4 — on an older build host it does not compile, and it
+  is not needed: the wire tap is the byte source.
+- **Architectures**: x86_64 is what runs here. For aarch64 the
+  arch-specific pieces are `goabi.h` (Go's register ABI: X0… for
+  arguments, X28 for `g`), the RET encoding `gopclntab.js` checks
+  (`d65f03c0`), and `bpf_tracing.h`'s `PT_REGS_*` behind
+  `-D__TARGET_ARCH_arm64`. Verified here without an arm64 machine:
+  every object except the socket tap compiles for arm64 against a real
+  arm64 kernel's BTF (Ubuntu 20.04, 5.8), and `go-rets.mjs` on a
+  cross-compiled arm64 Go TLS client finds seven return sites for
+  `crypto/tls.(*Conn).Read`, each at a real `RET`. Loading and running
+  on arm64 has not been exercised.
+- **Clean clone**: `git clone`, `npm install`, `make bpf`, `npm test`,
+  `npx yeetkit build` all pass from a fresh checkout on this box. The
+  yeetkit dependency is by absolute path for now.
+
 ### Known limits
 
 - Capture is per call, up to 8 × 4095 bytes; a larger call is reported
