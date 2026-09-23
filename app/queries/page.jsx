@@ -14,7 +14,7 @@ import { queryStream, recentQueries } from "@/lib/scope.js";
 const SHOWN = 100;
 
 const tone = (q) => (q.state === "running" ? "text-yellow" : q.ok ? "text-green" : "text-red");
-const label = (q) => (q.state === "running" ? "running" : q.ok ? `ok ${q.status ?? ""}`.trim() : `error ${q.status ?? ""}`.trim());
+const label = (q) => (q.state === "running" ? (q.stream ? "writing" : "running") : q.ok ? `ok ${q.status ?? ""}`.trim() : `error ${q.status ?? ""}`.trim());
 const oneLine = (text) => text.replace(/\s+/g, " ").trim();
 
 /* An `ai` instruction, as light markdown inside the formatted query. */
@@ -48,7 +48,7 @@ function Row(props) {
       <div role="button" tabindex="0" class="flex w-full cursor-pointer select-text flex-wrap items-baseline gap-x-3 py-0.5 text-left hover:bg-mode" onClick={() => setOpen(!open())} title={open() ? "collapse" : "expand"}>
         <span class="shrink-0 text-blue">{open() ? "[-]" : "[+]"}</span>
         <span class="shrink-0 text-dim">{clock(q().at)}</span>
-        <span class={`w-20 shrink-0 ${tone(q())}`}>{label(q())}</span>
+        <span class={`w-20 shrink-0 ${tone(q())} ${q().state === "running" ? "spinner" : ""}`}>{q().state === "running" ? " " : ""}{label(q())}</span>
         <span class="w-16 shrink-0 text-right text-cyan">{q().ms != null ? duration(q().ms) : ""}</span>
         <span class="w-12 shrink-0 text-right text-dim">{q().bytes ? bytes(q().bytes) : ""}</span>
         <span class="min-w-0 flex-1 truncate">
@@ -74,9 +74,9 @@ function Row(props) {
             <Query text={q().query} />
           </div>
           <div class="min-w-0 space-y-1">
-            <p class="text-dim">
-              answer
-              {q().state === "running" ? (q().stream ? " · the model is writing" : " · waiting") : ""}
+            <p class={`text-dim ${q().state === "running" ? "spinner" : ""}`}>
+              {q().state === "running" ? " " : ""}answer
+              {q().state === "running" ? (q().stream ? " · the model is writing" : q().stages.includes("ai") ? " · thinking" : " · running") : ""}
               {q().rows ? ` · ${Object.entries(q().rows).map(([k, n]) => `${k}: ${n}`).join(", ")}` : ""}
               {q().ms != null ? ` · ${duration(q().ms)}` : ""}
             </p>
@@ -86,7 +86,7 @@ function Row(props) {
             {/* While it runs, the answer is whatever the model has said so far;
                 once done, the result itself. */}
             <Show when={q().state === "running"} fallback={<Show when={q().preview}><Body text={prettyJson(q().preview)} class="max-h-[40rem] overflow-auto" /></Show>}>
-              <Show when={q().stream} fallback={<p class="text-dim">…</p>}>
+              <Show when={q().stream} fallback={<p class="spinner text-dim"> {q().stages.includes("ai") ? "the model is thinking" : "working"}</p>}>
                 <pre class="max-h-[40rem] overflow-auto whitespace-pre-wrap break-words bg-mode px-2 py-1 text-green">
                   {q().stream}
                   <span class="caret" />

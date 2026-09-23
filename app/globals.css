@@ -122,6 +122,37 @@ body[data-state="reconnecting"] {
   }
 }
 
+/* A spinner, the terminal kind: one glyph that steps through a braille
+ * cycle. Drawn by CSS so the isolate sends no ticks for it. */
+@utility spinner {
+  &::before {
+    content: "⠋";
+    display: inline-block;
+    width: 1ch;
+    animation: spinner 0.8s steps(1) infinite;
+  }
+}
+
+@keyframes spinner {
+  0% { content: "⠋"; }
+  10% { content: "⠙"; }
+  20% { content: "⠹"; }
+  30% { content: "⠸"; }
+  40% { content: "⠼"; }
+  50% { content: "⠴"; }
+  60% { content: "⠦"; }
+  70% { content: "⠧"; }
+  80% { content: "⠇"; }
+  90% { content: "⠏"; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner::before {
+    animation: none;
+    content: "…";
+  }
+}
+
 /* A block cursor. `steps(1)` because a cursor blinks; it does not
  * fade. */
 @utility caret {
