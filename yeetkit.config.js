@@ -1,5 +1,5 @@
 export default {
-  title: "yeetkit app",
+  title: "httpscope",
   port: 3000,
   /* The port the isolate's tty portal listens on. Loopback only: the
    * hub in the dev server is its one peer. */
