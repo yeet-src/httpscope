@@ -1,0 +1,17 @@
+{
+  "name": "httpscope",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "yeetkit dev",
+    "build": "yeetkit build",
+    "start": "yeetkit start",
+    "check": "yeetkit build && yeetkit check",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
+    "graphql": "^17.0.2",
+    "yeetkit": "file:/home/jrg/src/yeetkit"
+  }
+}
