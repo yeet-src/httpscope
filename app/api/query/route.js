@@ -8,10 +8,19 @@
  *
  *   curl -s localhost:3000/api/query -d '{"query":"{ services { name } }"}'
  *   curl -s 'localhost:3000/api/query?query=%7B%20summary%20%7B%20transactions%20%7D%20%7D'
+ *
+ * With `?stream=1` (or `Accept: application/x-ndjson`) the answer is a
+ * chunked stream of JSON lines instead of one object: `start`, then
+ * `text` events carrying the model's output as an `| ai` stage produces
+ * it, then `result` with the GraphQL result. Progress is polled from the
+ * isolate while the query runs, since Node cannot read an isolate
+ * stream directly. The server has to pass a streaming body through for
+ * the chunks to arrive as they are made; a buffering server still
+ * delivers valid lines, all at the end.
  */
 
 import { execute } from "@/lib/query/query.js";
-import { ai, queryFinished, queryStarted, recentTransactions, snapshot, transform } from "@/lib/scope.js";
+import { ai, queryFinished, queryProgress, queryStarted, recentTransactions, snapshot, transform } from "@/lib/scope.js";
 
 const bad = (message, status = 400) => Response.json({ errors: [{ message }] }, { status });
 
@@ -23,6 +32,11 @@ const clientOf = (request) => {
   return parts.join(" · ").slice(0, 120) || null;
 };
 
+const wantsStream = (request) => {
+  const url = new URL(request.url);
+  return url.searchParams.get("stream") === "1" || (request.headers.get("accept") ?? "").includes("application/x-ndjson");
+};
+
 export async function POST(request) {
   let body;
   try {
@@ -31,7 +45,7 @@ export async function POST(request) {
   } catch {
     return bad("expected a JSON body { query, variables?, operationName? } or application/graphql");
   }
-  return run(body, request, "POST");
+  return wantsStream(request) ? streamRun(body, request, "POST") : run(body, request, "POST");
 }
 
 export async function GET(request) {
@@ -47,7 +61,58 @@ export async function GET(request) {
       return bad("variables must be JSON");
     }
   }
-  return run({ query, variables, operationName: url.searchParams.get("operationName") }, request, "GET");
+  const args = { query, variables, operationName: url.searchParams.get("operationName") };
+  return wantsStream(request) ? streamRun(args, request, "GET") : run(args, request, "GET");
+}
+
+/* The same query, answered as JSON lines while it runs. */
+async function streamRun({ query, variables = null, operationName = null }, request, method) {
+  if (typeof query !== "string" || !query.trim()) return bad("query must be a non-empty string");
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const line = (obj) => controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+      const started = Date.now();
+      const id = await queryStarted({ query, variables, client: clientOf(request), method }).catch(() => null);
+      line({ event: "start", id, at: started });
+      let sent = 0;
+      let stop = false;
+      const poll = (async () => {
+        while (!stop && id != null) {
+          await new Promise((r) => setTimeout(r, 150));
+          const p = await queryProgress(id).catch(() => null);
+          if (p && p.stream.length > sent) {
+            line({ event: "text", delta: p.stream.slice(sent) });
+            sent = p.stream.length;
+          }
+        }
+      })();
+      try {
+        const snap = await snapshot();
+        const result = await execute(snap, query, {
+          variables,
+          operationName,
+          loaders: {
+            transactions: (where, limit) => recentTransactions(where, limit),
+            transform: (program, rows) => transform(program, rows),
+            ai: (instruction, rows, list) => ai(instruction, rows, list, { queryId: id }),
+          },
+        });
+        stop = true;
+        await poll;
+        const p = id != null ? await queryProgress(id).catch(() => null) : null;
+        if (p && p.stream.length > sent) line({ event: "text", delta: p.stream.slice(sent) });
+        const ms = Date.now() - started;
+        if (id != null) queryFinished(id, { result, ms, status: result.errors && !result.data ? 400 : 200 }).catch(() => {});
+        line({ event: "result", ms, ...result });
+      } catch (error) {
+        stop = true;
+        line({ event: "result", errors: [{ message: String(error?.message ?? error) }] });
+      }
+      controller.close();
+    },
+  });
+  return new Response(stream, { headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store", "x-accel-buffering": "no" } });
 }
 
 async function run({ query, variables = null, operationName = null }, request, method) {

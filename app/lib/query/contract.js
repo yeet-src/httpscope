@@ -12,6 +12,9 @@ at TLS library boundaries, read-only.
 ## Ask
 
     POST /api/query          body: { "query": "...", "variables": { } }
+    POST /api/query?stream=1 the same, answered as JSON lines while it runs:
+                             {"event":"start"} · {"event":"text","delta":"…"} per piece of
+                             a model's output · {"event":"result","data":…} at the end
     GET  /api/query?query=...
     GET  /api/schema         this schema alone, as SDL
     GET  /api/status         are the taps alive

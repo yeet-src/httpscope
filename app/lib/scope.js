@@ -119,6 +119,13 @@ export async function queryFinished(id, { result, ms, status }) {
   for (const fn of queryListeners) fn(entry);
 }
 
+/** Where a running query is: its state and the model's text so far — for a route that streams progress. */
+export async function queryProgress(id) {
+  const p = await ensureStarted();
+  const q = p.state.queries.find((x) => x.id === id);
+  return q ? { state: q.state, stream: q.stream ?? "", streaming: Boolean(q.streaming) } : null;
+}
+
 /** The last `limit` queries, newest first. */
 export async function recentQueries(limit = 100) {
   const p = await ensureStarted();
