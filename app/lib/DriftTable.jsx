@@ -43,9 +43,8 @@ export default function DriftTable(props) {
                     <Path text={e.path} />
                   </td>
                 )}
-                <td class="max-w-0 truncate py-0.5 text-dim" title={e.detail}>
-                  {e.detail}
-                </td>
+                {/* The detail is the point of the row: it wraps rather than cuts. */}
+                <td class="min-w-64 whitespace-normal break-words py-0.5 text-dim">{e.detail}</td>
               </tr>
             )}
           </For>
