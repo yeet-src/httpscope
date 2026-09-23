@@ -44,7 +44,7 @@ const roleArg = (r) => (r ? r.toLowerCase() : null);
  *   { endpoints { path p50: metric(name: P50) p99: metric(name: P99) } }
  *   | context   { let worst = 0; }
  *   | transform { $.tail = $.p99 / $.p50; if ($.tail < 5) return null; worst = Math.max(worst, $.tail); }
- *   | ai        { group these by what the endpoint seems to do; keep path, add group }
+ *   | ai(model: "claude-opus-5", max: 4000) { group these by what the endpoint seems to do; keep path, add group }
  *
  * `transform` is JavaScript: `$` is the row; mutate it, `return` a new
  * one, or `return null` to drop it. `context` runs once and its
@@ -168,9 +168,22 @@ export function splitTail(source) {
   return { document: source, tail: [] };
 }
 
+/* `(model: "x", max: 4000)` after a stage name → { model, max }. */
+export function parseStageOptions(text) {
+  const out = {};
+  if (!text) return out;
+  const re = /([A-Za-z_][A-Za-z0-9_]*)\s*:\s*("(?:[^"\\]|\\.)*"|[-0-9.]+|[A-Za-z_][A-Za-z0-9_.-]*)/g;
+  let m;
+  while ((m = re.exec(text))) {
+    const raw = m[2];
+    out[m[1]] = raw.startsWith('"') ? JSON.parse(raw) : /^[-0-9.]+$/.test(raw) ? Number(raw) : raw;
+  }
+  return out;
+}
+
 function parseTail(text) {
   const blocks = [];
-  const re = /\|\s*(context|transform|ai)\s*\{/g;
+  const re = /\|\s*(context|transform|ai)\s*(\(([^)]*)\))?\s*\{/g;
   let m;
   while ((m = re.exec(text))) {
     let depth = 1;
@@ -181,7 +194,7 @@ function parseTail(text) {
       else if (text[i] === "}") depth--;
     }
     if (depth !== 0) throw new Error(`unbalanced braces in | ${m[1]} block`);
-    blocks.push({ kind: m[1], code: text.slice(start, i - 1) });
+    blocks.push({ kind: m[1], code: text.slice(start, i - 1), options: parseStageOptions(m[3]) });
     re.lastIndex = i;
   }
   if (!blocks.length) throw new Error("a pipeline tail is `| context { … }`, `| transform { … }` and `| ai { … }` blocks");
@@ -197,7 +210,7 @@ export function stages(blocks) {
     if (b.kind === "ai") {
       if (run.length) out.push({ kind: "js", blocks: run });
       run = [];
-      out.push({ kind: "ai", instruction: b.code.trim() });
+      out.push({ kind: "ai", instruction: b.code.trim(), options: b.options ?? {} });
     } else run.push(b);
   }
   if (run.length) out.push({ kind: "js", blocks: run });
@@ -232,7 +245,7 @@ async function applyTail(data, blocks, loaders) {
     let rows = JSON.parse(JSON.stringify(value));
     for (const stage of plan) {
       if (stage.kind === "js") rows = loaders.transform ? await loaders.transform(tailProgram(stage.blocks), rows) : runTail(stage.blocks, rows);
-      else rows = await loaders.ai(stage.instruction, rows, key);
+      else rows = await loaders.ai(stage.instruction, rows, key, stage.options);
       if (!Array.isArray(rows)) rows = rows == null ? [] : [rows];
     }
     out[key] = rows;

@@ -127,8 +127,12 @@ what the model sees and another can check what it said:
     { transactions(where: { statusBetween: [500, 599] }, limit: 20) { target status responseBody } }
     | ai { summarise the failure modes in three lines }
 
-The instruction may span lines and use light markdown. The model sees
-at most ~60 KB of rows; narrow first. An answer cut off mid-array keeps
+Options go in parentheses before the block: \`| ai(model: "claude-opus-5", max: 4000) { … }\`
+picks the model and caps its output in tokens; the default is
+\`claude-sonnet-5\`, chosen because it answers questions about API routes
+that stricter models decline as reconnaissance. The instruction may span
+lines and use light markdown. The model sees at most ~60 KB of rows;
+narrow first. An answer cut off mid-array keeps
 its complete rows and ends with \`{ _truncated: true }\`. Its answers are
 judgement, not measurement — the numbers upstream are the evidence. If
 it declines an instruction, the stage returns one row

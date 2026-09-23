@@ -90,3 +90,12 @@ test("path tokens colour segments, ids, placeholders and the query string", asyn
     ["dim:/", "fg:api", "dim:/", "fg:v1", "dim:/", "fg:users", "dim:/", "yellow:42", "dim:/", "fg:orders", "dim:/", "magenta:{n}", "dim:?", "cyan:page", "dim:=", "green:2", "dim:&", "cyan:q", "dim:=", "green:x"],
   );
 });
+
+test("a stage with options formats on its line", () => {
+  assert.equal(pretty('{ services { name } } | ai(model: "claude-opus-5") { keep }'), `{
+  services {
+    name
+  }
+}
+| ai(model: "claude-opus-5") { keep }`);
+});

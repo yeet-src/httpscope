@@ -30,13 +30,18 @@ export function tokenize(source) {
     }
     /* A pipeline stage: `| name { body }` — the body is code or prose, one token. */
     if (c === "|") {
-      const m = /^\|\s*(context|transform|ai)\s*\{/.exec(s.slice(i));
+      const m = /^\|\s*(context|transform|ai)\s*(\(([^)]*)\))?\s*\{/.exec(s.slice(i));
       if (m) {
         push("punct", "|");
-        push("space", m[0].slice(1, m[0].length - m[1].length - 1).replace(/\s*$/, "") || " ");
+        push("space", " ");
         push("stage", m[1]);
+        if (m[2]) {
+          push("punct", "(");
+          push("arg", m[3].trim());
+          push("punct", ")");
+        }
         const after = s.slice(i + m[0].length - 1);
-        push("space", m[0].slice(1 + m[1].length + (m[0].slice(1).indexOf(m[1]))).replace(/\{$/, "") || "");
+        push("space", " ");
         push("punct", "{");
         let depth = 1;
         let j = 1;
@@ -186,6 +191,10 @@ export function format(source) {
       depth = 0;
       out.push({ type: "space", text: "\n" }, t, { type: "space", text: " " }, next);
       k++;
+      if (tokens[k + 1]?.type === "punct" && tokens[k + 1].text === "(") {
+        out.push(tokens[k + 1], tokens[k + 2], tokens[k + 3]);
+        k += 3;
+      }
       if (tokens[k + 1]?.type === "punct" && tokens[k + 1].text === "{") {
         k++;
         out.push({ type: "space", text: " " }, tokens[k]);

@@ -86,7 +86,7 @@ export async function queryStarted({ query, variables = null, client = null, met
     client,
     query: String(query ?? "").slice(0, 20_000),
     variables: variables ? JSON.stringify(variables).slice(0, 2000) : null,
-    stages: [...String(query ?? "").matchAll(/\|\s*(context|transform|ai)\s*\{/g)].map((m) => m[1]),
+    stages: [...String(query ?? "").matchAll(/\|\s*(context|transform|ai)\s*(\(([^)]*)\))?\s*\{/g)].map((m) => (m[3] ? `${m[1]}(${m[3].trim()})` : m[1])),
     roots: rootsOf(query),
     state: "running",
     ms: null,
@@ -175,7 +175,7 @@ const AI_RETRIES = 1; /* a refusal is stochastic on borderline content */
  * model is asked for a JSON array; prose becomes one `{ text }` row.
  * `list` names which top-level field the rows came from.
  */
-export async function ai(instruction, rows, list = "rows", { queryId = null } = {}) {
+export async function ai(instruction, rows, list = "rows", { queryId = null, model = null, max = null } = {}) {
   const p = await ensureStarted();
   /* The query this stage belongs to, if the route said: its entry gets
    * the model's text as it streams, so the queries page shows it live. */
@@ -194,7 +194,7 @@ export async function ai(instruction, rows, list = "rows", { queryId = null } = 
    * reconnaissance; the same rows as the engineer's own application
    * being documented and maintained are answered. Which is what this is. */
   const request = {
-    model: AI_MODEL,
+    model: typeof model === "string" && model ? model : AI_MODEL,
     system:
       "You help an engineer understand, document and maintain the HTTP APIs of their own applications, working from tables their tooling produced: routes, request and response shapes, latency and error statistics, schema changes over time. You receive rows (a JSON array) and an instruction. Apply the instruction to the rows and answer with a JSON array of objects and nothing else — the rows for the next step: keep the fields the instruction needs, add the fields it asks for, drop the rows it excludes. Answer in plain text only when the instruction asks for a summary or an explanation.",
     messages: [{ role: "user", content: `Instruction: ${instruction}\n\nRows (${list}):${note}\n${payload}` }],

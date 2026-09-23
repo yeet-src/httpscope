@@ -252,3 +252,17 @@ test("rowsFromModel takes a JSON array, a fenced one, or prose", async () => {
   assert.deepEqual(rowsFromModel("The API looks healthy."), [{ text: "The API looks healthy." }]);
   assert.deepEqual(rowsFromModel('[{"a":1},{"a":2},{"a":'), [{ a: 1 }, { a: 2 }, { _truncated: true }]);
 });
+
+test("| ai(model: …, max: …) hands its options to the loader", async () => {
+  const snap = snapshot();
+  const seen = [];
+  const ai = async (instruction, rows, list, options) => {
+    seen.push(options);
+    return rows;
+  };
+  const r = await execute(snap, `{ services { name } } | ai(model: "claude-opus-5", max: 500) { keep } | ai { keep }`, { loaders: { ai } });
+  assert.equal(r.errors, undefined, JSON.stringify(r.errors));
+  assert.deepEqual(seen, [{ model: "claude-opus-5", max: 500 }, {}]);
+  const { parseStageOptions } = await import("../../app/lib/query/query.js");
+  assert.deepEqual(parseStageOptions('model: "x-y", max: 12, mode: fast'), { model: "x-y", max: 12, mode: "fast" });
+});

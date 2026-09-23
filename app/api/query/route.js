@@ -95,7 +95,7 @@ async function streamRun({ query, variables = null, operationName = null }, requ
           loaders: {
             transactions: (where, limit) => recentTransactions(where, limit),
             transform: (program, rows) => transform(program, rows),
-            ai: (instruction, rows, list) => ai(instruction, rows, list, { queryId: id }),
+            ai: (instruction, rows, list, options) => ai(instruction, rows, list, { ...options, queryId: id }),
           },
         });
         stop = true;
@@ -130,7 +130,7 @@ async function run({ query, variables = null, operationName = null }, request, m
     loaders: {
       transactions: (where, limit) => recentTransactions(where, limit),
       transform: (program, rows) => transform(program, rows),
-      ai: (instruction, rows, list) => ai(instruction, rows, list, { queryId: id }),
+      ai: (instruction, rows, list, options) => ai(instruction, rows, list, { ...options, queryId: id }),
     },
   });
   const status = result.errors && !result.data ? 400 : 200;
