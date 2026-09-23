@@ -36,9 +36,7 @@ the same process, once a second, except drift which is a stream.
 
 The palette is the template's: a terminal's sixteen colours, no boxes,
 structure from whitespace. Colour is never the only channel — a red
-status sits beside its number. The type is the IBM VGA 9×16 text-mode
-font from VileR's Oldschool PC Font Pack (int10h.org, CC BY-SA 4.0,
-`public/fonts/`), set at its native 16px cell.
+status sits beside its number.
 
 ```sh
 npm run dev                                # http://localhost:3000
