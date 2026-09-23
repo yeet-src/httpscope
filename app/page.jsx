@@ -46,8 +46,7 @@ export default function Home() {
                 {" "}
                 · errors <span class="text-red">{status().errors}</span>
               </>
-            ) : null}{" "}
-            · <a href="/api" class="text-blue hover:underline">[api]</a>
+            ) : null}
           </p>
         )
       }
