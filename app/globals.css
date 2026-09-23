@@ -64,9 +64,37 @@ body {
   background: var(--color-bg);
   color: var(--color-fg);
   font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.45;
   font-variant-numeric: tabular-nums;
+}
+
+/* Dense tables: one rule under the header, hairline rows, numbers right
+ * and never wrapped. The classes are what the pages already use; this
+ * sets the rhythm once rather than on every cell. */
+table {
+  border-collapse: collapse;
+}
+th {
+  font-weight: normal;
+  color: var(--color-dim);
+  white-space: nowrap;
+}
+td,
+th {
+  padding: 1px 1.25rem 1px 0;
+  vertical-align: baseline;
+}
+td:last-child,
+th:last-child {
+  padding-right: 0;
+}
+tbody tr {
+  border-bottom: 1px solid color-mix(in srgb, var(--color-rule) 55%, transparent);
+}
+pre {
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 ::selection {

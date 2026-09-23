@@ -79,7 +79,8 @@ export default function EndpointPage(props) {
               )}
             </dl>
 
-            <div class="space-y-2">
+            <div class="grid gap-8 xl:grid-cols-2">
+            <div class="min-w-0 space-y-2">
               <h2 class="comment">
                 request <span class="text-dim">{() => e().reqType ?? ""} · headers {() => Object.keys(e().reqHeaders ?? {}).join(" ")}</span>
               </h2>
@@ -87,7 +88,7 @@ export default function EndpointPage(props) {
               <p class="text-dim">body bytes p50 {() => bytes(e().reqBodyBytes?.p50)} · max {() => bytes(e().reqBodyBytes?.max)}</p>
             </div>
 
-            <div class="space-y-3">
+            <div class="min-w-0 space-y-3">
               <h2 class="comment">
                 responses <span class="text-dim">{() => e().resType ?? ""} · headers {() => Object.keys(e().resHeaders ?? {}).join(" ")}</span>
               </h2>
@@ -105,6 +106,7 @@ export default function EndpointPage(props) {
                 )}
               </For>
               <p class="text-dim">body bytes p50 {() => bytes(e().resBodyBytes?.p50)} · max {() => bytes(e().resBodyBytes?.max)}</p>
+            </div>
             </div>
 
             <div class="space-y-3">

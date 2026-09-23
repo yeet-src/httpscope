@@ -29,8 +29,6 @@ export default function Home() {
 
   return (
     <section class="space-y-6">
-      <h1 class="comment">the HTTP APIs this machine speaks — off the wire, and inside TLS</h1>
-
       {() => error() && <p class="text-red">error: {error()}</p>}
 
       {/* One line: is the capture alive. Every number sits beside its
@@ -53,7 +51,10 @@ export default function Home() {
         )
       }
 
-      <div class="overflow-x-auto">
+      <div class="grid gap-8 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div class="min-w-0 space-y-1">
+        <h2 class="comment">services · the APIs this machine calls and serves</h2>
+        <div class="overflow-x-auto">
         <table class="w-full">
           <thead class="text-left">
             <tr class="border-b border-rule text-dim">
@@ -91,13 +92,14 @@ export default function Home() {
           </tbody>
         </table>
         {() => view().services.length === 0 && <p class="py-2 text-dim">nothing yet — make an HTTP request on this machine</p>}
+        </div>
       </div>
 
-      <div class="space-y-1">
+      <div class="min-w-0 space-y-1">
         <h2 class="comment">
           recent drift · <Link href="/drift" end class="text-blue hover:underline">[all, live]</Link>
         </h2>
-        <For each={view().drift}>
+        <For each={view().drift} fallback={<p class="text-dim">none yet</p>}>
           {(e) => (
             <p class="truncate">
               <span class="text-dim">{ago(e.at)}</span> <span class={driftTone(e.kind)}>{e.kind}</span>{" "}
@@ -105,6 +107,7 @@ export default function Home() {
             </p>
           )}
         </For>
+      </div>
       </div>
     </section>
   );

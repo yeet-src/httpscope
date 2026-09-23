@@ -62,8 +62,9 @@ export default function Layout(props) {
      * on the modeline moved up onto the nav row rather than going
      * away — they are the only live thing the shell itself shows. */
     <div class="min-h-screen bg-bg text-fg">
-      <main class="mx-auto w-full max-w-4xl px-4 py-6">
-        <nav class="mb-6 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+      <main class="mx-auto w-full max-w-screen-2xl px-4 py-4">
+        <nav class="mb-4 flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-rule pb-2">
+          <span class="text-fg">httpscope</span>
           {routes.map(([href, name, end]) => (
             <Link
               href={href}
