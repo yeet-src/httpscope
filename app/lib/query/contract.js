@@ -69,8 +69,46 @@ criteria are yours:
     # what changed in the last ten minutes, and the evidence
     { endpoints(where: { driftSince: 600, driftKinds: ["response.field.missing", "response.type.changed"] }) {
         service method path drift(since: 600) { kind detail } } }
-    { transactions(where: { statusBetween: [500, 599], since: 600 }, limit: 20) {
+    { transactions(where: { statusBetween: [500, 599], since: 600 }, limit: 20, bodyBytes: 2048) {
         ago service method target status duration pid comm responseBody } }
+
+String arguments in \`where\` take \`{ eq, ne, like, in }\` (\`like\` with \`*\`);
+numbers take \`{ eq, ne, gt, gte, lt, lte }\`. Variables work as in any
+GraphQL: \`query($s: String!) { services(name: $s) { name } }\` with
+\`"variables": { "s": "…" }\`.
+
+## Shaping the answer
+
+Two things sit on top of plain GraphQL, for criteria the schema did not
+anticipate.
+
+**Field directives**, on any selected field:
+
+    @when(gt: | gte: | lt: | lte: | eq: | ne: | like: | in:)   keep the row only if the value passes;
+                                                             on a single object the field becomes null
+    @div(field: "sibling") @minus(field:) @plus(field:) @times(field:)   arithmetic against a sibling
+    @div(by: 1000) …                                        or against a constant
+
+The sibling is named by its alias or name and must be selected earlier
+in the same row:
+
+    { endpoints { path p50: metric(name: P50) tail: metric(name: P99) @div(field: "p50") @when(gt: 10) } }
+
+**A pipeline tail**, after the document, over the rows of every
+top-level list, stages in the order written:
+
+    | context   { let seen = 0; }                 JavaScript, run once; its declarations are in
+                                                  scope for every transform
+    | transform { $.n2 = $.n * 2; if ($.n < 5) return null; }
+                                                  JavaScript per row: \`$\` is the row — mutate it,
+                                                  \`return\` a new object to reshape it, \`return null\`
+                                                  to drop it
+    | ai        { instruction }                   a model over the rows (below)
+
+Bodies may span lines. The tail applies to each top-level list with the
+same stages, so a document with several roots should either want that
+or keep one root per tail. Transforms run in the isolate, not in a
+browser and not in Node; they see only the rows.
 
 ## Asking a model
 
@@ -89,12 +127,9 @@ what the model sees and another can check what it said:
     { transactions(where: { statusBetween: [500, 599] }, limit: 20) { target status responseBody } }
     | ai { summarise the failure modes in three lines }
 
-A tail runs over every top-level list in the document, with the same
-instruction, so a query with several roots should either want that or
-keep one root per tail. Bodies may span lines: JavaScript in
-\`transform\`, plain prose or light markdown in \`ai\`.
-
-The model sees at most ~60 KB of rows; narrow first. Its answers are
+The instruction may span lines and use light markdown. The model sees
+at most ~60 KB of rows; narrow first. An answer cut off mid-array keeps
+its complete rows and ends with \`{ _truncated: true }\`. Its answers are
 judgement, not measurement — the numbers upstream are the evidence. If
 it declines an instruction, the stage returns one row
 \`{ text, _stop: "refusal" }\` rather than nothing; rephrasing what the
@@ -105,6 +140,10 @@ gives the middle; \`endpoints(where: { service: { eq: "…" }, metrics: [{ metri
 the outliers. \`metric(name: …)\` reads any metric by name.
 
 ## Schema
+
+Everything above is convention; this is the contract. Every type,
+field and argument carries its description. Introspection returns the
+same.
 
 \`\`\`graphql
 ${SDL.trim()}
