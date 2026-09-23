@@ -80,7 +80,7 @@ export default function EndpointPage(props) {
               )}
             </dl>
 
-            <div class="grid gap-8 xl:grid-cols-2">
+            <div class="space-y-6">
             <div class="min-w-0 space-y-2">
               <h2 class="comment">
                 request <span class="text-dim">{() => e().reqType ?? ""} · headers {() => Object.keys(e().reqHeaders ?? {}).join(" ")}</span>

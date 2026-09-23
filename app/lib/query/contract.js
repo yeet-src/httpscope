@@ -86,6 +86,11 @@ what the model sees and another can check what it said:
     { transactions(where: { statusBetween: [500, 599] }, limit: 20) { target status responseBody } }
     | ai { summarise the failure modes in three lines }
 
+A tail runs over every top-level list in the document, with the same
+instruction, so a query with several roots should either want that or
+keep one root per tail. Bodies may span lines: JavaScript in
+\`transform\`, plain prose or light markdown in \`ai\`.
+
 The model sees at most ~60 KB of rows; narrow first. Its answers are
 judgement, not measurement — the numbers upstream are the evidence. If
 it declines an instruction, the stage returns one row

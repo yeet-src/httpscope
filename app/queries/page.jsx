@@ -7,7 +7,7 @@
 import { For, Show, createSignal, onCleanup } from "yeetkit";
 
 import { ago, bytes, ms } from "@/lib/fmt.js";
-import { format, prettyJson, tone as tokenTone } from "@/lib/gql.js";
+import { format, inlineMarkdown, prettyJson, tone as tokenTone } from "@/lib/gql.js";
 import { queryStream, recentQueries } from "@/lib/scope.js";
 
 const SHOWN = 100;
@@ -16,10 +16,20 @@ const tone = (q) => (q.state === "running" ? "text-yellow" : q.ok ? "text-green"
 const label = (q) => (q.state === "running" ? "running" : q.ok ? `ok ${q.status ?? ""}`.trim() : `error ${q.status ?? ""}`.trim());
 const oneLine = (text) => text.replace(/\s+/g, " ").trim();
 
-/* The query, formatted over lines and coloured token by token. */
+/* An `ai` instruction, as light markdown inside the formatted query. */
+const Prose = (props) => (
+  <For each={inlineMarkdown(props.text)}>
+    {(p) =>
+      p.kind === "bold" ? <span class="font-bold text-fg">{p.text}</span> : p.kind === "code" ? <span class="text-green">{p.text}</span> : <span class="text-fg">{p.text}</span>
+    }
+  </For>
+);
+
+/* The query, formatted over lines and coloured token by token: GraphQL,
+ * then each stage — JavaScript highlighted, an ai instruction as prose. */
 const Query = (props) => (
-  <pre class="max-h-96 overflow-auto whitespace-pre-wrap break-all">
-    <For each={format(props.text)}>{(t) => <span class={tokenTone(t.type)}>{t.text}</span>}</For>
+  <pre class="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words">
+    <For each={format(props.text)}>{(t) => (t.type === "prose" ? <Prose text={t.text} /> : <span class={tokenTone(t.type)}>{t.text}</span>)}</For>
   </pre>
 );
 
@@ -45,7 +55,7 @@ function Row(props) {
         </span>
       </button>
       <Show when={open()}>
-        <div class="grid gap-4 py-2 pl-8 md:grid-cols-2">
+        <div class="space-y-3 py-2 pl-8">
           <div class="min-w-0 space-y-1">
             <p class="text-dim">
               query · {q().method}
@@ -55,17 +65,23 @@ function Row(props) {
           </div>
           <div class="min-w-0 space-y-1">
             <p class="text-dim">
-              answer{q().rows ? ` · ${Object.entries(q().rows).map(([k, n]) => `${k}: ${n}`).join(", ")}` : ""}
+              answer
+              {q().state === "running" ? (q().stream ? " · the model is writing" : " · waiting") : ""}
+              {q().rows ? ` · ${Object.entries(q().rows).map(([k, n]) => `${k}: ${n}`).join(", ")}` : ""}
+              {q().ms != null ? ` · ${ms(q().ms)}ms` : ""}
             </p>
             <Show when={q().errors.length}>
               <For each={q().errors}>{(e) => <p class="text-red">{e}</p>}</For>
             </Show>
-            <Show when={q().stream && (q().state === "running" || q().streaming)}>
-              <p class="text-dim">model, streaming</p>
-              <pre class="max-h-96 overflow-auto whitespace-pre-wrap break-all text-yellow">{q().stream}</pre>
-            </Show>
-            <Show when={q().preview} fallback={<p class="text-dim">{q().state === "running" ? (q().stream ? "" : "waiting…") : "no answer"}</p>}>
-              <pre class="max-h-96 overflow-auto whitespace-pre-wrap break-all text-green">{prettyJson(q().preview)}</pre>
+            {/* While it runs, the answer is whatever the model has said so far;
+                once done, the result itself. */}
+            <Show when={q().state === "running"} fallback={<Show when={q().preview}><pre class="max-h-[40rem] overflow-auto whitespace-pre-wrap break-words text-green">{prettyJson(q().preview)}</pre></Show>}>
+              <Show when={q().stream} fallback={<p class="text-dim">…</p>}>
+                <pre class="max-h-[40rem] overflow-auto whitespace-pre-wrap break-words text-green">
+                  {q().stream}
+                  <span class="caret" />
+                </pre>
+              </Show>
             </Show>
           </div>
         </div>

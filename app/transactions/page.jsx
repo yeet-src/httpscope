@@ -34,7 +34,7 @@ function Row(props) {
         </span>
       </button>
       <Show when={open()}>
-        <div class="grid gap-4 py-2 pl-8 md:grid-cols-2">
+        <div class="space-y-3 py-2 pl-8">
           <div class="min-w-0 space-y-1">
             <p class="text-dim">
               request · {bytes(t().requestBodyLength)}

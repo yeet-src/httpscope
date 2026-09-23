@@ -45,7 +45,7 @@ export function tokenize(source) {
           else if (after[j] === "}") depth--;
         }
         const body = after.slice(1, depth === 0 ? j - 1 : j);
-        push("code", body);
+        out.push({ type: "code", text: body, stage: m[1] });
         if (depth === 0) push("punct", "}");
         i += m[0].length - 1 + (depth === 0 ? j : after.length);
         continue;
@@ -191,8 +191,12 @@ export function format(source) {
         out.push({ type: "space", text: " " }, tokens[k]);
         if (tokens[k + 1]?.type === "code") {
           k++;
-          const body = tokens[k].text.trim();
-          out.push({ type: "space", text: body.includes("\n") ? "\n  " : " " }, { type: "code", text: body.replace(/\n/g, "\n  ") }, { type: "space", text: body.includes("\n") ? "\n" : " " });
+          const body = dedent(tokens[k].text);
+          const multi = body.includes("\n");
+          out.push({ type: "space", text: multi ? "\n  " : " " });
+          if (tokens[k].stage === "ai") out.push({ type: "prose", text: multi ? body.replace(/\n/g, "\n  ") : body });
+          else for (const jt of tokenizeJs(body)) out.push(multi && jt.type === "space" ? { ...jt, text: jt.text.replace(/\n/g, "\n  ") } : jt);
+          out.push({ type: "space", text: multi ? "\n" : " " });
         }
         if (tokens[k + 1]?.type === "punct" && tokens[k + 1].text === "}") {
           k++;
@@ -233,6 +237,80 @@ export function format(source) {
   return out;
 }
 
+/* Strip the common leading indentation of a multi-line body. */
+function dedent(text) {
+  const lines = text.replace(/^\s*\n/, "").replace(/\s+$/, "").split("\n");
+  const indents = lines.filter((l) => l.trim()).map((l) => l.match(/^\s*/)[0].length);
+  const cut = indents.length ? Math.min(...indents) : 0;
+  return lines.map((l) => l.slice(cut)).join("\n").trim();
+}
+
+const JS_KEYWORDS = new Set(["let", "const", "var", "function", "return", "if", "else", "for", "of", "in", "while", "do", "new", "typeof", "instanceof", "true", "false", "null", "undefined", "async", "await", "try", "catch", "finally", "throw", "switch", "case", "break", "continue", "default", "class", "this", "delete", "void", "yield"]);
+
+/** JavaScript, cut into coloured tokens: js-keyword, js-string, js-number, js-comment, js-row (`$`), js-ident, js-punct, space. */
+export function tokenizeJs(source) {
+  const out = [];
+  const s = String(source ?? "");
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (/\s/.test(c)) {
+      let j = i;
+      while (j < s.length && /\s/.test(s[j])) j++;
+      out.push({ type: "space", text: s.slice(i, j) });
+      i = j;
+      continue;
+    }
+    if (s.startsWith("//", i)) {
+      let j = s.indexOf("\n", i);
+      if (j < 0) j = s.length;
+      out.push({ type: "js-comment", text: s.slice(i, j) });
+      i = j;
+      continue;
+    }
+    if (s.startsWith("/*", i)) {
+      let j = s.indexOf("*/", i + 2);
+      j = j < 0 ? s.length : j + 2;
+      out.push({ type: "js-comment", text: s.slice(i, j) });
+      i = j;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      let j = i + 1;
+      while (j < s.length && s[j] !== c) {
+        if (s[j] === "\\") j++;
+        j++;
+      }
+      out.push({ type: "js-string", text: s.slice(i, Math.min(j + 1, s.length)) });
+      i = Math.min(j + 1, s.length);
+      continue;
+    }
+    if (/[0-9]/.test(c) || (c === "." && /[0-9]/.test(s[i + 1] ?? ""))) {
+      let j = i + 1;
+      while (j < s.length && /[0-9a-fA-FxX._eE+-]/.test(s[j]) && !(s[j] === "-" && !/[eE]/.test(s[j - 1])) && !(s[j] === "+" && !/[eE]/.test(s[j - 1]))) j++;
+      out.push({ type: "js-number", text: s.slice(i, j) });
+      i = j;
+      continue;
+    }
+    if (c === "$" && !/[A-Za-z0-9_]/.test(s[i + 1] ?? "")) {
+      out.push({ type: "js-row", text: "$" });
+      i++;
+      continue;
+    }
+    if (/[A-Za-z_$]/.test(c)) {
+      let j = i;
+      while (j < s.length && /[A-Za-z0-9_$]/.test(s[j])) j++;
+      const word = s.slice(i, j);
+      out.push({ type: JS_KEYWORDS.has(word) ? "js-keyword" : "js-ident", text: word });
+      i = j;
+      continue;
+    }
+    out.push({ type: "js-punct", text: c });
+    i++;
+  }
+  return out;
+}
+
 /** Formatted text alone. */
 export const pretty = (source) =>
   format(source)
@@ -252,10 +330,47 @@ export const tone = (type) =>
     variable: "text-cyan",
     stage: "text-magenta",
     code: "text-dim",
+    prose: "text-fg",
     comment: "text-dim",
     punct: "text-dim",
     space: "",
+    "js-keyword": "text-magenta",
+    "js-string": "text-green",
+    "js-number": "text-yellow",
+    "js-comment": "text-dim",
+    "js-row": "text-cyan",
+    "js-ident": "text-fg",
+    "js-punct": "text-dim",
   })[type] ?? "text-fg";
+
+/**
+ * Light markdown for an `ai` instruction: paragraphs, `- ` bullets,
+ * **bold** and `code`. Returns `[{ kind: "text" | "bold" | "code" | "br", text }]`,
+ * for a renderer to turn into spans.
+ */
+export function inlineMarkdown(text) {
+  const out = [];
+  const lines = String(text ?? "").split("\n");
+  lines.forEach((line, i) => {
+    const bullet = /^(\s*)[-*]\s+/.exec(line);
+    let rest = line;
+    if (bullet) {
+      out.push({ kind: "text", text: bullet[1] + "• " });
+      rest = line.slice(bullet[0].length);
+    }
+    const re = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+    let last = 0;
+    let m;
+    while ((m = re.exec(rest))) {
+      if (m.index > last) out.push({ kind: "text", text: rest.slice(last, m.index) });
+      out.push(m[0].startsWith("`") ? { kind: "code", text: m[0].slice(1, -1) } : { kind: "bold", text: m[0].slice(2, -2) });
+      last = m.index + m[0].length;
+    }
+    if (last < rest.length) out.push({ kind: "text", text: rest.slice(last) });
+    if (i < lines.length - 1) out.push({ kind: "br", text: "\n" });
+  });
+  return out;
+}
 
 /** JSON re-indented when it parses whole; as it came otherwise. */
 export function prettyJson(text) {

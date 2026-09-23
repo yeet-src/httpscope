@@ -51,7 +51,7 @@ export default function Home() {
         )
       }
 
-      <div class="grid gap-8 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div class="space-y-8">
       <div class="min-w-0 space-y-1">
         <h2 class="comment">services · the APIs this machine calls and serves</h2>
         <div class="overflow-x-auto">
