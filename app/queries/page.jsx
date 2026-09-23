@@ -33,12 +33,19 @@ const Query = (props) => (
   </pre>
 );
 
+/* Open/closed lives with the page, keyed by query id: a streaming row is
+ * replaced on every update, and a state kept inside it would reset. */
 function Row(props) {
-  const [open, setOpen] = createSignal(false);
+  const open = () => props.open;
+  const setOpen = (v) => props.toggle(v);
   const q = () => props.q;
   return (
     <div class="border-b border-rule/40">
-      <button class="flex w-full flex-wrap items-baseline gap-x-3 py-0.5 text-left hover:bg-mode" onClick={() => setOpen(!open())}>
+      {/* A div, not a button: the text stays selectable. The expanded
+          query and answer live outside it, so selecting them never
+          toggles the row. */}
+      <div role="button" tabindex="0" class="flex w-full cursor-pointer select-text flex-wrap items-baseline gap-x-3 py-0.5 text-left hover:bg-mode" onClick={() => setOpen(!open())} title={open() ? "collapse" : "expand"}>
+        <span class="shrink-0 text-blue">{open() ? "[-]" : "[+]"}</span>
         <span class="w-8 shrink-0 text-right text-dim">{ago(q().at)}</span>
         <span class={`w-20 shrink-0 ${tone(q())}`}>{label(q())}</span>
         <span class="w-14 shrink-0 text-right text-cyan">{q().ms != null ? `${ms(q().ms)}ms` : ""}</span>
@@ -53,7 +60,7 @@ function Row(props) {
         <span class="max-w-64 shrink-0 truncate text-dim" title={q().client ?? ""}>
           {q().client ?? "–"}
         </span>
-      </button>
+      </div>
       <Show when={open()}>
         <div class="space-y-3 py-2 pl-8">
           <div class="min-w-0 space-y-1">
@@ -93,6 +100,14 @@ function Row(props) {
 export default function Queries() {
   const [rows, setRows] = createSignal([]);
   const [live, setLive] = createSignal(false);
+  const [openIds, setOpenIds] = createSignal(new Set());
+  const toggle = (id) => (on) =>
+    setOpenIds((ids) => {
+      const next = new Set(ids);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
   let stopped = false;
 
   (async () => {
@@ -118,11 +133,11 @@ export default function Queries() {
   return (
     <section class="space-y-4">
       <h1 class="comment">
-        queries — what agents are asking · {() => (live() ? <span class="text-green">live</span> : <span class="text-dim">connecting</span>)} · click one for the query and its answer
+        queries — what agents are asking · {() => (live() ? <span class="text-green">live</span> : <span class="text-dim">connecting</span>)} · [+] opens the query and its answer
       </h1>
       <div>
         <For each={rows()} fallback={<p class="text-dim">no queries yet — POST one to /api/query</p>}>
-          {(q) => <Row q={q} />}
+          {(q) => <Row q={q} open={openIds().has(q.id)} toggle={toggle(q.id)} />}
         </For>
       </div>
     </section>

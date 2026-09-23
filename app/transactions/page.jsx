@@ -21,7 +21,11 @@ function Row(props) {
   const t = () => props.tx;
   return (
     <div class="border-b border-rule/40">
-      <button class="flex w-full flex-wrap items-baseline gap-x-3 py-0.5 text-left hover:bg-mode" onClick={() => setOpen(!open())}>
+      {/* A div, not a button: the text stays selectable. The expanded
+          query and answer live outside it, so selecting them never
+          toggles the row. */}
+      <div role="button" tabindex="0" class="flex w-full cursor-pointer select-text flex-wrap items-baseline gap-x-3 py-0.5 text-left hover:bg-mode" onClick={() => setOpen(!open())} title={open() ? "collapse" : "expand"}>
+        <span class="shrink-0 text-blue">{open() ? "[-]" : "[+]"}</span>
         <span class="w-8 text-dim">{ago(t().at)}</span>
         <span class={`w-8 ${tone(t().status)}`}>{t().status ?? "–"}</span>
         <span class="text-magenta">{t().method}</span>
@@ -32,7 +36,7 @@ function Row(props) {
           {transport(t().transport)} {t().comm ? `${t().comm}:${t().pid}` : t().pid ? `pid ${t().pid}` : ""}
           {t().complete ? "" : ` cut: ${t().cut}`}
         </span>
-      </button>
+      </div>
       <Show when={open()}>
         <div class="space-y-3 py-2 pl-8">
           <div class="min-w-0 space-y-1">
@@ -78,7 +82,7 @@ export default function Transactions() {
   return (
     <section class="space-y-4">
       <h1 class="comment">
-        transactions — the last {SHOWN}, newest first · click one for its headers and bodies ·{" "}
+        transactions — the last {SHOWN}, newest first · [+] opens headers and bodies ·{" "}
         <a href="/api" class="text-blue hover:underline">
           [query them]
         </a>
