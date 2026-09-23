@@ -9,7 +9,7 @@
  * is fetched from ourselves rather than rebuilt here.
  */
 
-import { PAGE } from "@/lib/query/page.js";
+import { PAGE } from "@/lib/query/contract.js";
 
 export async function GET(request) {
   const accept = request.headers.get("accept") ?? "";
