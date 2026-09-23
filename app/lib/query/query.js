@@ -39,18 +39,24 @@ const roleArg = (r) => (r ? r.toLowerCase() : null);
  * Two extensions on top of GraphQL, for criteria the schema did not
  * anticipate: field directives (@when gates a row on a value, @div and
  * friends compute from siblings — see the SDL), and a pipeline tail
- * after the document, JavaScript over the rows of every top-level list:
+ * after the document — stages over the rows of every top-level list:
  *
  *   { endpoints { path p50: metric(name: P50) p99: metric(name: P99) } }
  *   | context   { let worst = 0; }
  *   | transform { $.tail = $.p99 / $.p50; if ($.tail < 5) return null; worst = Math.max(worst, $.tail); }
+ *   | ai        { group these by what the endpoint seems to do; keep path, add group }
  *
- * `$` is the row; mutate it, `return` a new one, or `return null` to
- * drop it. `context` runs once and its declarations are in scope for
- * every transform.
+ * `transform` is JavaScript: `$` is the row; mutate it, `return` a new
+ * one, or `return null` to drop it. `context` runs once and its
+ * declarations are in scope for every transform. `ai` hands the rows
+ * and an instruction to a model (`loaders.ai`, in the app the isolate's
+ * yeet:ai) and takes back the rows it returns — a JSON array, or one
+ * row `{ text }` when it answered in prose. Stages run in the order
+ * written.
  */
 export async function execute(snapshot, source, { variables = null, operationName = null, now = Date.now, loaders = {} } = {}) {
   const { document: text, tail } = splitTail(source);
+  if (tail.some((b) => b.kind === "ai") && !loaders.ai) return { data: null, errors: [{ message: "| ai stages need a model; none is available here" }] };
   let document;
   try {
     document = parse(text);
@@ -69,7 +75,7 @@ export async function execute(snapshot, source, { variables = null, operationNam
   if (data) {
     try {
       data = applyDirectives(document, data, variables ?? {}, operationName);
-      if (tail.length) data = await applyTail(data, tail, loaders.transform);
+      if (tail.length) data = await applyTail(data, tail, loaders);
     } catch (e) {
       errors.push({ message: e.message });
     }
@@ -164,7 +170,7 @@ export function splitTail(source) {
 
 function parseTail(text) {
   const blocks = [];
-  const re = /\|\s*(context|transform)\s*\{/g;
+  const re = /\|\s*(context|transform|ai)\s*\{/g;
   let m;
   while ((m = re.exec(text))) {
     let depth = 1;
@@ -178,8 +184,24 @@ function parseTail(text) {
     blocks.push({ kind: m[1], code: text.slice(start, i - 1) });
     re.lastIndex = i;
   }
-  if (!blocks.length) throw new Error("a pipeline tail is `| context { … }` and `| transform { … }` blocks");
+  if (!blocks.length) throw new Error("a pipeline tail is `| context { … }`, `| transform { … }` and `| ai { … }` blocks");
   return blocks;
+}
+
+/* Stages in order: runs of context/transform blocks become one JS
+ * program each; an ai block is a model call between them. */
+export function stages(blocks) {
+  const out = [];
+  let run = [];
+  for (const b of blocks) {
+    if (b.kind === "ai") {
+      if (run.length) out.push({ kind: "js", blocks: run });
+      run = [];
+      out.push({ kind: "ai", instruction: b.code.trim() });
+    } else run.push(b);
+  }
+  if (run.length) out.push({ kind: "js", blocks: run });
+  return out;
 }
 
 /** One function from the blocks: contexts first, then the transforms in order over each row. */
@@ -202,14 +224,51 @@ export function runTail(blocks, rows) {
   return new Function("rows", tailProgram(blocks))(rows);
 }
 
-async function applyTail(data, blocks, transform) {
+async function applyTail(data, blocks, loaders) {
   const out = { ...data };
+  const plan = stages(blocks);
   for (const [key, value] of Object.entries(data)) {
     if (!Array.isArray(value)) continue;
-    const rows = JSON.parse(JSON.stringify(value));
-    out[key] = transform ? await transform(tailProgram(blocks), rows) : runTail(blocks, rows);
+    let rows = JSON.parse(JSON.stringify(value));
+    for (const stage of plan) {
+      if (stage.kind === "js") rows = loaders.transform ? await loaders.transform(tailProgram(stage.blocks), rows) : runTail(stage.blocks, rows);
+      else rows = await loaders.ai(stage.instruction, rows, key);
+      if (!Array.isArray(rows)) rows = rows == null ? [] : [rows];
+    }
+    out[key] = rows;
   }
   return out;
+}
+
+/** What an `ai` stage's answer becomes: the JSON array it returned, else one row of text. */
+export function rowsFromModel(text) {
+  const t = String(text ?? "").trim();
+  const fenced = /^```(?:json)?\s*([\s\S]*?)```$/m.exec(t);
+  const body = fenced ? fenced[1].trim() : t;
+  const start = body.indexOf("[");
+  if (start >= 0) {
+    const asRows = (parsed) => (Array.isArray(parsed) ? parsed.map((r) => (r !== null && typeof r === "object" && !Array.isArray(r) ? r : { value: r })) : null);
+    const end = body.lastIndexOf("]");
+    if (end > start) {
+      try {
+        const rows = asRows(JSON.parse(body.slice(start, end + 1)));
+        if (rows) return rows;
+      } catch {
+        /* fall through to the salvage below */
+      }
+    }
+    /* Cut off mid-array: keep the objects that closed, mark the loss. */
+    const lastObj = body.lastIndexOf("}");
+    if (lastObj > start) {
+      try {
+        const rows = asRows(JSON.parse(body.slice(start, lastObj + 1) + "]"));
+        if (rows) return [...rows, { _truncated: true }];
+      } catch {
+        /* prose after all */
+      }
+    }
+  }
+  return [{ text: t }];
 }
 
 /** Syntax and validation errors for `source`, without running it. */

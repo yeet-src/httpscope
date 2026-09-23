@@ -69,6 +69,29 @@ criteria are yours:
     { transactions(where: { statusBetween: [500, 599], since: 600 }, limit: 20) {
         ago service method target status duration pid comm responseBody } }
 
+## Asking a model
+
+A tail may also have \`| ai { instruction }\` stages: the rows so far and
+your instruction go to a model, and the rows it returns continue down
+the pipeline — a JSON array, or one row \`{ text }\` when it answered
+in prose. Stages run in the order written, so a \`transform\` can shape
+what the model sees and another can check what it said:
+
+    { endpoints { service method path n errorRate resShape: responses { status body { shape } } } }
+    | ai { group these endpoints by what they seem to be for; return path and group }
+
+    { drift(since: 3600) { ago kind service method path detail } }
+    | ai { which of these would break an existing client? return kind, path, breaking (true/false), why }
+
+    { transactions(where: { statusBetween: [500, 599] }, limit: 20) { target status responseBody } }
+    | ai { summarise the failure modes in three lines }
+
+The model sees at most ~60 KB of rows; narrow first. Its answers are
+judgement, not measurement — the numbers upstream are the evidence. If
+it declines an instruction, the stage returns one row
+\`{ text, _stop: "refusal" }\` rather than nothing; rephrasing what the
+rows are for usually helps.
+
 An endpoint compared against its service: \`services { stats { p95Median } }\`
 gives the middle; \`endpoints(where: { service: { eq: "…" }, metrics: [{ metric: P95, is: { gt: … } }] })\`
 the outliers. \`metric(name: …)\` reads any metric by name.

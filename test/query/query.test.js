@@ -224,3 +224,31 @@ test("a pipeline tail runs JavaScript over every top-level list", async () => {
   const broken = await execute(snap, `{ services { name } } | transform { this is not js }`);
   assert.ok(broken.errors?.length);
 });
+
+test("an | ai stage hands rows to a model and takes rows back, in order with transforms", async () => {
+  const snap = snapshot();
+  const calls = [];
+  const ai = async (instruction, rows, list) => {
+    calls.push({ instruction, n: rows.length, list });
+    return rows.map((r) => ({ ...r, group: r.path.startsWith("/users") ? "users" : "other" }));
+  };
+  const r = await execute(snap, `{ endpoints { path n } } | transform { if ($.n < 2) return null; } | ai { group them } | transform { $.tag = $.group.toUpperCase(); }`, { loaders: { ai } });
+  assert.equal(r.errors, undefined, JSON.stringify(r.errors));
+  assert.deepEqual(calls, [{ instruction: "group them", n: 1, list: "endpoints" }]);
+  assert.deepEqual(r.data.endpoints, [{ path: "/users/{n}", n: 6, group: "users", tag: "USERS" }]);
+
+  const prose = await execute(snap, `{ services { name } } | ai { summarise }`, { loaders: { ai: async () => [{ text: "two services" }] } });
+  assert.deepEqual(prose.data.services, [{ text: "two services" }]);
+
+  const none = await execute(snap, `{ services { name } } | ai { summarise }`);
+  assert.match(none.errors[0].message, /need a model/);
+});
+
+test("rowsFromModel takes a JSON array, a fenced one, or prose", async () => {
+  const { rowsFromModel } = await import("../../app/lib/query/query.js");
+  assert.deepEqual(rowsFromModel('[{"a":1},{"a":2}]'), [{ a: 1 }, { a: 2 }]);
+  assert.deepEqual(rowsFromModel("Here you go:\n```json\n[{\"a\":1}]\n```"), [{ a: 1 }]);
+  assert.deepEqual(rowsFromModel("[1, \"x\"]"), [{ value: 1 }, { value: "x" }]);
+  assert.deepEqual(rowsFromModel("The API looks healthy."), [{ text: "The API looks healthy." }]);
+  assert.deepEqual(rowsFromModel('[{"a":1},{"a":2},{"a":'), [{ a: 1 }, { a: 2 }, { _truncated: true }]);
+});

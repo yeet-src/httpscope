@@ -25,6 +25,7 @@
  * offsets, which only Node can compute; they show as failed for now.
  */
 
+import { complete } from "yeet:ai";
 import { decodeContentEncoding } from "yeet:compression";
 
 import { utf8 } from "./http/bytes.js";
@@ -32,6 +33,7 @@ import { Decoder } from "./http/decoder.js";
 import { Reassembler, connKeyOf } from "./http/tcp.js";
 import { Model } from "./model/model.js";
 import { filterTransactions } from "./query/filter.js";
+import { rowsFromModel } from "./query/query.js";
 import { attribute } from "./probes/attribute.js";
 import { snapshot as inventory } from "./probes/conns.js";
 import { nsPath, targetFor } from "./probes/discover.js";
@@ -67,6 +69,55 @@ export async function recentTransactions(where = null, limit = 50) {
   return filterTransactions(p.state.recent, where, Math.min(Math.max(0, limit ?? 50), 500));
 }
 
+const AI_MAX_INPUT = 60_000; /* characters of rows handed to the model */
+const AI_MAX_OUTPUT = 8_000; /* tokens */
+/* Measured here: claude-opus-5's safeguards decline tables of API routes
+ * with statistics as reconnaissance — every instruction, every try —
+ * while claude-sonnet-5 and claude-haiku-4-5 answer all of them. The
+ * stage is judgement over rows the engineer already has, so Sonnet is
+ * the right size anyway. */
+const AI_MODEL = "claude-sonnet-5";
+const AI_RETRIES = 1; /* a refusal is stochastic on borderline content */
+
+/**
+ * A query's `| ai { instruction }` stage: the rows and the instruction
+ * go to the model through yeet:ai, its answer comes back as rows. The
+ * model is asked for a JSON array; prose becomes one `{ text }` row.
+ * `list` names which top-level field the rows came from.
+ */
+export async function ai(instruction, rows, list = "rows") {
+  const p = await ensureStarted();
+  let payload = JSON.stringify(rows);
+  let note = "";
+  if (payload.length > AI_MAX_INPUT) {
+    let keep = rows.length;
+    while (keep > 1 && JSON.stringify(rows.slice(0, keep)).length > AI_MAX_INPUT) keep = Math.floor(keep / 2);
+    payload = JSON.stringify(rows.slice(0, keep));
+    note = ` Only the first ${keep} of ${rows.length} rows are included; say so if it matters.`;
+  }
+  const started = Date.now();
+  /* The framing matters to a model's safeguards too: rows of routes
+   * described as "captured" or "monitored" traffic read as
+   * reconnaissance; the same rows as the engineer's own application
+   * being documented and maintained are answered. Which is what this is. */
+  const request = {
+    model: AI_MODEL,
+    system:
+      "You help an engineer understand, document and maintain the HTTP APIs of their own applications, working from tables their tooling produced: routes, request and response shapes, latency and error statistics, schema changes over time. You receive rows (a JSON array) and an instruction. Apply the instruction to the rows and answer with a JSON array of objects and nothing else — the rows for the next step: keep the fields the instruction needs, add the fields it asks for, drop the rows it excludes. Answer in plain text only when the instruction asks for a summary or an explanation.",
+    messages: [{ role: "user", content: `Instruction: ${instruction}\n\nRows (${list}):${note}\n${payload}` }],
+    max_tokens: AI_MAX_OUTPUT,
+  };
+  let r = await complete(request);
+  for (let i = 0; i < AI_RETRIES && r.stop_reason === "refusal"; i++) r = await complete(request);
+  const s = p.state.ai;
+  s.calls++;
+  s.inputTokens += r.usage?.input_tokens ?? 0;
+  s.outputTokens += r.usage?.output_tokens ?? 0;
+  s.lastMs = Date.now() - started;
+  s.model = r.usage?.model ?? s.model;
+  return rowsFromModel(r.text);
+}
+
 /** Run a query's pipeline tail (JavaScript, from tailProgram) over rows, in this isolate rather than in Node. */
 export async function transform(program, rows) {
   return new Function("rows", program)(rows);
@@ -94,6 +145,7 @@ export async function status() {
     transactions: s.transactions,
     model: { services: p.model.services().length, endpoints: p.model.endpointsByKey.size, drift: p.model.events.length, inflated: p.model.inflated },
     tls: [...s.tls.values()].map((t) => ({ binary: t.binary, label: t.label ?? null, pids: [...t.pids], taps: t.session?.taps ?? [], state: t.state, reason: t.reason ?? null })),
+    ai: s.ai,
     errors: s.errors.slice(-10),
   };
 }
@@ -102,7 +154,7 @@ async function start() {
   /* `tls` is keyed by the binary as the host can open it. `comms` maps
    * a pid to its comm, for naming what a TLS tap reports (a tap's
    * record has a pid and nothing else). */
-  const state = { startedAt: Date.now(), segments: 0, transactions: 0, errors: [], tls: new Map(), comms: new Map(), flows: new Map(), rows: [], listeners: new Map(), recent: [] };
+  const state = { startedAt: Date.now(), segments: 0, transactions: 0, errors: [], tls: new Map(), comms: new Map(), flows: new Map(), rows: [], listeners: new Map(), recent: [], ai: { calls: 0, inputTokens: 0, outputTokens: 0, lastMs: null, model: null, lastStop: null } };
   const fail = (where) => (error) => {
     state.errors.push({ at: Date.now(), where, message: String(error?.message ?? error) });
     if (state.errors.length > MAX_ERRORS) state.errors.shift();

@@ -139,6 +139,15 @@ Four ways to say what you mean, from least to most free:
   JavaScript over the rows of every top-level list, `$` the row: mutate it, `return`
   a new one, `return null` to drop it; `context` runs once and its declarations
   are in scope. It runs in the isolate, not in Node.
+- **`| ai { instruction }`**, a stage that hands the rows and an instruction to a
+  model through `yeet:ai` and takes back the rows it returns (a JSON array, or one
+  `{ text }` row for prose), in order with the other stages. Judgement over rows the
+  query already selected: "group these by what they are for", "which of these would
+  break a client", "summarise the failure modes". It runs on `claude-sonnet-5`:
+  measured here, `claude-opus-5`'s safeguards decline tables of API routes as
+  reconnaissance every time, while Sonnet 5 and Haiku 4.5 answer. A refusal comes
+  back as a `{ text, _stop: "refusal" }` row, never as silence. Usage is on
+  `/api/status` under `ai`.
 
 `transactions(where: TransactionWhere, limit)` is the evidence: the last
 thousand transactions kept in the pipeline with headers and up to 4 KiB

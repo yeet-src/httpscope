@@ -11,7 +11,7 @@
  */
 
 import { execute } from "@/lib/query/query.js";
-import { recentTransactions, snapshot, transform } from "@/lib/scope.js";
+import { ai, recentTransactions, snapshot, transform } from "@/lib/scope.js";
 
 const bad = (message, status = 400) => Response.json({ errors: [{ message }] }, { status });
 
@@ -52,7 +52,11 @@ async function run({ query, variables = null, operationName = null }) {
     operationName,
     /* Recent transactions come from the isolate only when asked for,
      * filtered there; a pipeline tail's JavaScript runs there too. */
-    loaders: { transactions: (where, limit) => recentTransactions(where, limit), transform: (program, rows) => transform(program, rows) },
+    loaders: {
+      transactions: (where, limit) => recentTransactions(where, limit),
+      transform: (program, rows) => transform(program, rows),
+      ai: (instruction, rows, list) => ai(instruction, rows, list),
+    },
   });
   return Response.json(result, { status: result.errors && !result.data ? 400 : 200 });
 }
