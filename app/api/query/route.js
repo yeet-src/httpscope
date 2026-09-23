@@ -11,9 +11,17 @@
  */
 
 import { execute } from "@/lib/query/query.js";
-import { ai, recentTransactions, snapshot, transform } from "@/lib/scope.js";
+import { ai, queryFinished, queryStarted, recentTransactions, snapshot, transform } from "@/lib/scope.js";
 
 const bad = (message, status = 400) => Response.json({ errors: [{ message }] }, { status });
+
+/* What the request says about who sent it — enough to tell agents apart
+ * on the queries page. */
+const clientOf = (request) => {
+  const h = request.headers;
+  const parts = [h.get("x-forwarded-for") ?? h.get("x-real-ip"), h.get("user-agent")].filter(Boolean);
+  return parts.join(" · ").slice(0, 120) || null;
+};
 
 export async function POST(request) {
   let body;
@@ -23,7 +31,7 @@ export async function POST(request) {
   } catch {
     return bad("expected a JSON body { query, variables?, operationName? } or application/graphql");
   }
-  return run(body);
+  return run(body, request, "POST");
 }
 
 export async function GET(request) {
@@ -39,11 +47,13 @@ export async function GET(request) {
       return bad("variables must be JSON");
     }
   }
-  return run({ query, variables, operationName: url.searchParams.get("operationName") });
+  return run({ query, variables, operationName: url.searchParams.get("operationName") }, request, "GET");
 }
 
-async function run({ query, variables = null, operationName = null }) {
+async function run({ query, variables = null, operationName = null }, request, method) {
   if (typeof query !== "string" || !query.trim()) return bad("query must be a non-empty string");
+  const started = Date.now();
+  const id = await queryStarted({ query, variables, client: clientOf(request), method }).catch(() => null);
   const snap = await snapshot();
   /* Recent transactions are fetched from the isolate only when asked
    * for, filtered there, so a snapshot stays small. */
@@ -55,8 +65,10 @@ async function run({ query, variables = null, operationName = null }) {
     loaders: {
       transactions: (where, limit) => recentTransactions(where, limit),
       transform: (program, rows) => transform(program, rows),
-      ai: (instruction, rows, list) => ai(instruction, rows, list),
+      ai: (instruction, rows, list) => ai(instruction, rows, list, { queryId: id }),
     },
   });
-  return Response.json(result, { status: result.errors && !result.data ? 400 : 200 });
+  const status = result.errors && !result.data ? 400 : 200;
+  if (id != null) queryFinished(id, { result, ms: Date.now() - started, status }).catch(() => {});
+  return Response.json(result, { status });
 }

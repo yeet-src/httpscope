@@ -15,6 +15,7 @@ export default function Layout(props) {
     ["/", "*home*", true],
     ["/transactions", "*transactions*", false],
     ["/drift", "*drift*", false],
+    ["/queries", "*queries*", false],
   ];
 
   return (

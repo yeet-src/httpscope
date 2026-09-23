@@ -25,7 +25,7 @@
  * offsets, which only Node can compute; they show as failed for now.
  */
 
-import { complete } from "yeet:ai";
+import { stream as aiStream } from "yeet:ai";
 import { decodeContentEncoding } from "yeet:compression";
 
 import { utf8 } from "./http/bytes.js";
@@ -63,6 +63,87 @@ export function ensureStarted() {
   return pipeline;
 }
 
+/* ---- agent queries -----------------------------------------------------
+ *
+ * Every query that reaches /api/query is recorded here by the route: when
+ * it started, who sent it (what the request said about itself), the text,
+ * and — once it finishes — how long it took, whether it worked, how big
+ * the answer was and a preview of it. The queries page shows them live.
+ */
+const QUERIES = 200;
+const RESULT_PREVIEW = 8192;
+const queryListeners = new Set();
+let queryId = 0;
+
+/** A query began. Returns its id for `queryFinished`. */
+export async function queryStarted({ query, variables = null, client = null, method = "POST" }) {
+  const p = await ensureStarted();
+  const entry = {
+    id: ++queryId,
+    at: Date.now(),
+    method,
+    client,
+    query: String(query ?? "").slice(0, 20_000),
+    variables: variables ? JSON.stringify(variables).slice(0, 2000) : null,
+    stages: [...String(query ?? "").matchAll(/\|\s*(context|transform|ai)\s*\{/g)].map((m) => m[1]),
+    state: "running",
+    ms: null,
+    ok: null,
+    errors: [],
+    bytes: 0,
+    rows: null,
+    preview: null,
+  };
+  p.state.queries.push(entry);
+  if (p.state.queries.length > QUERIES) p.state.queries.splice(0, p.state.queries.length - QUERIES);
+  for (const fn of queryListeners) fn(entry);
+  return entry.id;
+}
+
+/** A query ended: `result` is the GraphQL result object. */
+export async function queryFinished(id, { result, ms, status }) {
+  const p = await ensureStarted();
+  const entry = p.state.queries.find((q) => q.id === id);
+  if (!entry) return;
+  const text = JSON.stringify(result ?? null);
+  entry.state = "done";
+  entry.ms = ms;
+  entry.status = status;
+  entry.ok = !result?.errors?.length;
+  entry.errors = (result?.errors ?? []).map((e) => e.message).slice(0, 5);
+  entry.bytes = text.length;
+  entry.rows = result?.data ? Object.fromEntries(Object.entries(result.data).map(([k, v]) => [k, Array.isArray(v) ? v.length : v == null ? 0 : 1])) : null;
+  entry.preview = text.length > RESULT_PREVIEW ? text.slice(0, RESULT_PREVIEW) + `\n… ${text.length - RESULT_PREVIEW} more bytes` : text;
+  for (const fn of queryListeners) fn(entry);
+}
+
+/** The last `limit` queries, newest first. */
+export async function recentQueries(limit = 100) {
+  const p = await ensureStarted();
+  return p.state.queries.slice(-limit).reverse();
+}
+
+/** Query starts and finishes as they happen: the entry, each time it changes. */
+export async function* queryStream() {
+  await ensureStarted();
+  const queue = [];
+  let wake = null;
+  const listener = (e) => {
+    queue.push(e);
+    wake?.();
+  };
+  queryListeners.add(listener);
+  try {
+    for (;;) {
+      if (!queue.length) await new Promise((r) => (wake = r));
+      wake = null;
+      while (queue.length) yield { ...queue.shift() };
+    }
+  } finally {
+    queryListeners.delete(listener);
+  }
+}
+
 /** Recent transactions matching `where` (a TransactionWhere), newest first. */
 export async function recentTransactions(where = null, limit = 50) {
   const p = await ensureStarted();
@@ -85,8 +166,11 @@ const AI_RETRIES = 1; /* a refusal is stochastic on borderline content */
  * model is asked for a JSON array; prose becomes one `{ text }` row.
  * `list` names which top-level field the rows came from.
  */
-export async function ai(instruction, rows, list = "rows") {
+export async function ai(instruction, rows, list = "rows", { queryId = null } = {}) {
   const p = await ensureStarted();
+  /* The query this stage belongs to, if the route said: its entry gets
+   * the model's text as it streams, so the queries page shows it live. */
+  const entry = queryId != null ? p.state.queries.find((q) => q.id === queryId) : null;
   let payload = JSON.stringify(rows);
   let note = "";
   if (payload.length > AI_MAX_INPUT) {
@@ -107,8 +191,31 @@ export async function ai(instruction, rows, list = "rows") {
     messages: [{ role: "user", content: `Instruction: ${instruction}\n\nRows (${list}):${note}\n${payload}` }],
     max_tokens: AI_MAX_OUTPUT,
   };
-  let r = await complete(request);
-  for (let i = 0; i < AI_RETRIES && r.stop_reason === "refusal"; i++) r = await complete(request);
+  const run = async () => {
+    const st = aiStream(request);
+    let text = "";
+    let lastPush = 0;
+    const push = (final = false) => {
+      if (!entry) return;
+      const now = Date.now();
+      if (!final && now - lastPush < 150) return;
+      lastPush = now;
+      entry.stream = text;
+      entry.streaming = !final;
+      for (const fn of queryListeners) fn(entry);
+    };
+    for await (const ev of st) {
+      if (ev.type === "text") {
+        text += ev.delta ?? "";
+        push();
+      }
+    }
+    const r = await st.result;
+    push(true);
+    return r;
+  };
+  let r = await run();
+  for (let i = 0; i < AI_RETRIES && r.stop_reason === "refusal"; i++) r = await run();
   const s = p.state.ai;
   s.calls++;
   s.inputTokens += r.usage?.input_tokens ?? 0;
@@ -146,6 +253,7 @@ export async function status() {
     model: { services: p.model.services().length, endpoints: p.model.endpointsByKey.size, drift: p.model.events.length, inflated: p.model.inflated },
     tls: [...s.tls.values()].map((t) => ({ binary: t.binary, label: t.label ?? null, pids: [...t.pids], taps: t.session?.taps ?? [], state: t.state, reason: t.reason ?? null })),
     ai: s.ai,
+    queries: { total: queryId, running: s.queries.filter((q) => q.state === "running").length },
     errors: s.errors.slice(-10),
   };
 }
@@ -154,7 +262,7 @@ async function start() {
   /* `tls` is keyed by the binary as the host can open it. `comms` maps
    * a pid to its comm, for naming what a TLS tap reports (a tap's
    * record has a pid and nothing else). */
-  const state = { startedAt: Date.now(), segments: 0, transactions: 0, errors: [], tls: new Map(), comms: new Map(), flows: new Map(), rows: [], listeners: new Map(), recent: [], ai: { calls: 0, inputTokens: 0, outputTokens: 0, lastMs: null, model: null, lastStop: null } };
+  const state = { startedAt: Date.now(), segments: 0, transactions: 0, errors: [], tls: new Map(), comms: new Map(), flows: new Map(), rows: [], listeners: new Map(), recent: [], queries: [], ai: { calls: 0, inputTokens: 0, outputTokens: 0, lastMs: null, model: null, lastStop: null } };
   const fail = (where) => (error) => {
     state.errors.push({ at: Date.now(), where, message: String(error?.message ?? error) });
     if (state.errors.length > MAX_ERRORS) state.errors.shift();
