@@ -7,7 +7,7 @@
  * socket. */
 import { For, Link, Show, createSignal, onCleanup } from "yeetkit";
 
-import { Body, Headers } from "@/lib/Highlight.jsx";
+import { Body, Headers, Path } from "@/lib/Highlight.jsx";
 import { bytes, clock, duration } from "@/lib/fmt.js";
 import { recentTransactions } from "@/lib/scope.js";
 
@@ -38,7 +38,7 @@ function Row(props) {
           {t().service}
         </span>
         <span class="min-w-0 flex-1 truncate" title={t().target}>
-          {t().target}
+          <Path text={t().target} />
         </span>
         <span class="shrink-0 text-dim">
           {transport(t().transport)} {t().comm ? `${t().comm}:${t().pid}` : t().pid ? `pid ${t().pid}` : ""}

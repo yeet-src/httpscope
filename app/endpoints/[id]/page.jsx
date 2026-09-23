@@ -3,7 +3,7 @@
 import { For, Link, Show, createEffect, createSignal, onCleanup } from "yeetkit";
 
 import DriftTable from "@/lib/DriftTable.jsx";
-import { Body as BodyText } from "@/lib/Highlight.jsx";
+import { Body as BodyText, Path } from "@/lib/Highlight.jsx";
 import { ago, bytes, clock, ms, statuses } from "@/lib/fmt.js";
 import { endpointDetail, recentTransactions } from "@/lib/scope.js";
 
@@ -63,7 +63,7 @@ export default function EndpointPage(props) {
               [back to *{e().service}*]
             </Link>
             <h1 class="comment">
-              <span class="text-magenta">{e().method}</span> <span class="text-fg">{e().path}</span>
+              <span class="text-magenta">{e().method}</span> <Path text={e().path} />
             </h1>
 
             <dl class="space-y-1">
@@ -122,7 +122,7 @@ export default function EndpointPage(props) {
                 {(t) => (
                   <div class="space-y-1 border-b border-rule/40 pb-2">
                     <p>
-                      <span class="text-dim">{clock(t.at)}</span> <span class={t.status >= 400 ? "text-red" : "text-yellow"}>{t.status ?? "–"}</span> {t.target}{" "}
+                      <span class="text-dim">{clock(t.at)}</span> <span class={t.status >= 400 ? "text-red" : "text-yellow"}>{t.status ?? "–"}</span> <Path text={t.target} />{" "}
                       <span class="text-cyan">{ms(t.duration)}ms</span> <span class="text-dim">{t.comm ? `${t.comm}:${t.pid}` : ""}</span>
                     </p>
                     <Show when={t.requestBody}>

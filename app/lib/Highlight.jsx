@@ -8,6 +8,13 @@
 import { For, Show } from "yeetkit";
 
 import { SENSITIVE_HEADERS, looksJson, prettyJson, tokenizeJson, tone } from "@/lib/gql.js";
+import { pathTokens } from "@/lib/pathtokens.js";
+
+/** A path, coloured. */
+export function Path(props) {
+  return <For each={pathTokens(props.text)}>{(p) => <span class={p.cls}>{p.text}</span>}</For>;
+}
+
 
 /** `headers` is `[[name, value]]`. */
 export function Headers(props) {

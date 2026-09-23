@@ -1,6 +1,7 @@
 /* One service: its endpoints, with statistics and a way into each. */
 import { For, Link, createEffect, createSignal, onCleanup } from "yeetkit";
 
+import { Path } from "@/lib/Highlight.jsx";
 import { ago, errorsOf, ms, statuses } from "@/lib/fmt.js";
 import { serviceEndpoints } from "@/lib/scope.js";
 
@@ -59,8 +60,8 @@ export default function Service(props) {
                 <tr class="hover:bg-mode">
                   <td class="py-0.5 pr-4 text-magenta">{e.method}</td>
                   <td class="py-0.5 pr-6">
-                    <Link href={`/endpoints/${e.id}`} end class="text-blue hover:underline">
-                      {e.path}
+                    <Link href={`/endpoints/${e.id}`} end class="hover:underline">
+                      <Path text={e.path} />
                     </Link>
                   </td>
                   <td class="py-0.5 pr-6 text-right text-yellow">{e.n}</td>

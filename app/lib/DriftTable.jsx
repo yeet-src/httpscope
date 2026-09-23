@@ -6,6 +6,7 @@
  * row is about the same endpoint. */
 import { For, Link } from "yeetkit";
 
+import { Path } from "@/lib/Highlight.jsx";
 import { clock, driftTone } from "@/lib/fmt.js";
 
 export default function DriftTable(props) {
@@ -39,7 +40,7 @@ export default function DriftTable(props) {
                 {where() && <td class="py-0.5 pr-5 text-magenta">{e.method}</td>}
                 {where() && (
                   <td class="max-w-72 truncate py-0.5 pr-5" title={e.path}>
-                    {e.path}
+                    <Path text={e.path} />
                   </td>
                 )}
                 <td class="max-w-0 truncate py-0.5 text-dim" title={e.detail}>

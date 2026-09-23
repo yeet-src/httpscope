@@ -81,3 +81,12 @@ test("JSON tokens: keys, strings, numbers, literals", async () => {
   const types = tokenizeJson('{"id": 390, "total": "13.50", "ok": true, "x": null}').filter((t) => t.type !== "space").map((t) => t.type);
   assert.deepEqual(types, ["json-punct", "json-key", "json-punct", "json-number", "json-punct", "json-key", "json-punct", "json-string", "json-punct", "json-key", "json-punct", "json-literal", "json-punct", "json-key", "json-punct", "json-literal", "json-punct"]);
 });
+
+test("path tokens colour segments, ids, placeholders and the query string", async () => {
+  const { pathTokens } = await import("../app/lib/pathtokens.js");
+  const toks = pathTokens("/api/v1/users/42/orders/{n}?page=2&q=x");
+  assert.deepEqual(
+    toks.map((t) => `${t.cls.replace("text-", "")}:${t.text}`),
+    ["dim:/", "fg:api", "dim:/", "fg:v1", "dim:/", "fg:users", "dim:/", "yellow:42", "dim:/", "fg:orders", "dim:/", "magenta:{n}", "dim:?", "cyan:page", "dim:=", "green:2", "dim:&", "cyan:q", "dim:=", "green:x"],
+  );
+});
