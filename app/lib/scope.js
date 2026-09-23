@@ -346,9 +346,11 @@ async function start() {
 
   /* The ring of recent transactions the query layer drills into: the
    * facts of each, and the first BODY_KEEP bytes of each body as text. */
+  let recentId = 0;
   const remember = (t, who, endpointKey) => {
     const path = endpointKey ? endpointKey.split("|").slice(3).join("|") : null;
     state.recent.push({
+      id: ++recentId,
       at: t.at,
       role: t.role,
       service: endpointKey ? endpointKey.split("|")[1] : (t.host ?? null),

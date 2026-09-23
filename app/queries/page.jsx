@@ -104,13 +104,26 @@ export default function Queries() {
   const [rows, setRows] = createSignal([]);
   const [live, setLive] = createSignal(false);
   const [openIds, setOpenIds] = createSignal(new Set());
+  /* New queries wait while a row is open, so the open one stays put;
+   * updates to rows on screen (a streaming answer) still flow. */
+  const [held, setHeld] = createSignal([]);
   const toggle = (id) => (on) =>
     setOpenIds((ids) => {
       const next = new Set(ids);
       if (on) next.add(id);
       else next.delete(id);
+      if (next.size === 0) release();
       return next;
     });
+  const closeAll = () => {
+    setOpenIds(new Set());
+    release();
+  };
+  const release = () => {
+    const h = held();
+    if (h.length) setRows((all) => [...h, ...all].slice(0, SHOWN));
+    setHeld([]);
+  };
   let stopped = false;
 
   (async () => {
@@ -119,11 +132,10 @@ export default function Queries() {
     try {
       for await (const q of queryStream()) {
         if (stopped) break;
-        setRows((all) => {
-          const i = all.findIndex((x) => x.id === q.id);
-          if (i >= 0) return all.map((x) => (x.id === q.id ? q : x));
-          return [q, ...all].slice(0, SHOWN);
-        });
+        const onScreen = rows().some((x) => x.id === q.id);
+        if (onScreen) setRows((all) => all.map((x) => (x.id === q.id ? q : x)));
+        else if (openIds().size > 0) setHeld((h) => (h.some((x) => x.id === q.id) ? h.map((x) => (x.id === q.id ? q : x)) : [q, ...h]));
+        else setRows((all) => [q, ...all].slice(0, SHOWN));
       }
     } catch {
       setLive(false);
@@ -138,6 +150,17 @@ export default function Queries() {
       <h1 class="comment">
         queries — what agents are asking · {() => (live() ? <span class="text-green">live</span> : <span class="text-dim">connecting</span>)} · [+] opens the query and its answer
       </h1>
+      <Show when={held().length}>
+        <p class="flex items-baseline gap-4 border-b border-rule py-0.5 text-yellow">
+          <span>▲ {held().length} new while a row is open</span>
+          <button class="text-blue hover:underline" onClick={release}>
+            [show]
+          </button>
+          <button class="text-blue hover:underline" onClick={closeAll}>
+            [close all]
+          </button>
+        </p>
+      </Show>
       <div>
         <For each={rows()} fallback={<p class="text-dim">no queries yet — POST one to /api/query</p>}>
           {(q) => <Row q={q} open={openIds().has(q.id)} toggle={toggle(q.id)} />}

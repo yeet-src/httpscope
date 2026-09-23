@@ -58,6 +58,12 @@ const detach = (node) => {
     if (i >= 0) n.kids.splice(i, 1);
   }
 };
+/* A removed subtree takes its ids with it, as the browser client does. */
+const forget = (node) => {
+  nodes.delete(node.id);
+  listeners.delete(node.id);
+  for (const k of node.kids) forget(k);
+};
 let mounted = false;
 const apply = (p) => {
   switch (p.op) {
@@ -69,6 +75,7 @@ const apply = (p) => {
       break;
     case "mount":
       nodes.clear();
+      listeners.clear();
       root.kids = (p.root.kids ?? []).map(build);
       nodes.set(0, root);
       mounted = true;
@@ -76,6 +83,12 @@ const apply = (p) => {
     case "insert": {
       const parent = nodes.get(p.parent);
       if (!parent) return;
+      /* An id already in the tree is being re-placed: take the old copy out. */
+      const stale = nodes.get(p.node.id);
+      if (stale) {
+        detach(stale);
+        forget(stale);
+      }
       const node = build(p.node);
       const at = p.before == null ? -1 : parent.kids.findIndex((k) => k.id === p.before);
       if (at < 0) parent.kids.push(node);
@@ -86,7 +99,7 @@ const apply = (p) => {
       const node = nodes.get(p.id);
       if (node) {
         detach(node);
-        nodes.delete(p.id);
+        forget(node);
       }
       break;
     }

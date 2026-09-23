@@ -7,7 +7,7 @@
  * selects and copies as text. */
 import { For, Show } from "yeetkit";
 
-import { SENSITIVE_HEADERS, looksJson, tokenizeJson, tone } from "@/lib/gql.js";
+import { SENSITIVE_HEADERS, looksJson, prettyJson, tokenizeJson, tone } from "@/lib/gql.js";
 
 /** `headers` is `[[name, value]]`. */
 export function Headers(props) {
@@ -27,12 +27,13 @@ export function Headers(props) {
   );
 }
 
-/** A body as text; JSON gets colours. `class` sets the box. */
+/** A body as text; JSON is re-indented (when whole) and coloured. `class` sets the box. */
 export function Body(props) {
+  const text = () => (looksJson(props.text) ? prettyJson(props.text) : props.text);
   return (
     <pre class={`whitespace-pre-wrap break-all ${props.class ?? "max-h-96 overflow-auto"}`}>
       <Show when={looksJson(props.text)} fallback={<span class="text-fg">{props.text}</span>}>
-        <For each={tokenizeJson(props.text)}>{(t) => <span class={tone(t.type)}>{t.text}</span>}</For>
+        <For each={tokenizeJson(text())}>{(t) => <span class={tone(t.type)}>{t.text}</span>}</For>
       </Show>
     </pre>
   );

@@ -17,8 +17,11 @@ const tone = (status) => (status == null ? "text-dim" : status >= 500 ? "text-re
 const transport = (t) => (t === 2 ? "wire" : t === 1 ? "tls" : "tcp");
 
 /* One transaction: a line, and the exchange under it when opened. */
+/* Open/closed lives with the page, keyed by transaction id: the list is
+ * replaced on every poll, and state kept inside a row would reset. */
 function Row(props) {
-  const [open, setOpen] = createSignal(false);
+  const open = () => props.open;
+  const setOpen = (v) => props.toggle(v);
   const t = () => props.tx;
   return (
     <div class="border-b border-rule/40">
@@ -67,10 +70,45 @@ function Row(props) {
 export default function Transactions() {
   const [rows, setRows] = createSignal([]);
   const [error, setError] = createSignal(null);
+  const [openIds, setOpenIds] = createSignal(new Set());
+  /* While a row is open the list holds still: new arrivals wait here,
+   * counted in a line at the top, until every row is closed again or
+   * the line is clicked. Rows already shown keep updating. */
+  const [held, setHeld] = createSignal(null);
+  const toggle = (id) => (on) =>
+    setOpenIds((ids) => {
+      const next = new Set(ids);
+      if (on) next.add(id);
+      else next.delete(id);
+      if (next.size === 0 && held()) release();
+      return next;
+    });
+  const closeAll = () => {
+    setOpenIds(new Set());
+    release();
+  };
+  const release = () => {
+    const h = held();
+    if (h) setRows(h);
+    setHeld(null);
+  };
+
+  /* A transaction never changes once recorded, so a row already on
+   * screen keeps its object: `For` then leaves its nodes alone and only
+   * the new rows are inserted. */
+  const merge = (fresh, cur) => {
+    const byId = new Map(cur.map((r) => [r.id, r]));
+    return fresh.map((f) => byId.get(f.id) ?? f);
+  };
 
   const tick = async () => {
     try {
-      setRows(await recentTransactions(null, SHOWN));
+      const fresh = merge(await recentTransactions(null, SHOWN), rows());
+      if (openIds().size > 0) {
+        const shown = new Set(rows().map((r) => r.id));
+        /* Hold the new rows back; what is on screen stays where it is. */
+        setHeld(fresh.some((f) => !shown.has(f.id)) ? fresh : null);
+      } else setRows(fresh);
       setError(null);
     } catch (failure) {
       setError(String(failure?.message ?? failure));
@@ -89,9 +127,20 @@ export default function Transactions() {
         </a>
       </h1>
       {() => error() && <p class="text-red">error: {error()}</p>}
+      <Show when={held()}>
+        <p class="flex items-baseline gap-4 border-b border-rule py-0.5 text-yellow">
+          <span>▲ {held().filter((f) => !rows().some((r) => r.id === f.id)).length} new while a row is open</span>
+          <button class="text-blue hover:underline" onClick={release}>
+            [show]
+          </button>
+          <button class="text-blue hover:underline" onClick={closeAll}>
+            [close all]
+          </button>
+        </p>
+      </Show>
       <div>
         <For each={rows()} fallback={<p class="text-dim">nothing yet — make an HTTP request on this machine</p>}>
-          {(tx) => <Row tx={tx} />}
+          {(tx) => <Row tx={tx} open={openIds().has(tx.id)} toggle={toggle(tx.id)} />}
         </For>
       </div>
     </section>
