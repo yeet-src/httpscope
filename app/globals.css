@@ -280,6 +280,51 @@ body[data-state="reconnecting"] {
   }
 }
 
+/* ---- a NeXTSTEP menu ------------------------------------------------
+ *
+ * Grey panel, bevelled edge (light above and left, dark below and
+ * right), a black title bar in white type, black items, the pointed-at
+ * item lifted white, the chosen one checked. Deliberately outside the
+ * theme tokens: the panel was grey on every desktop it ever appeared
+ * on, and stays grey here. */
+.next-menu {
+  background: #a8a8a8;
+  color: #000;
+  border-top: 2px solid #e6e6e6;
+  border-left: 2px solid #e6e6e6;
+  border-right: 2px solid #4a4a4a;
+  border-bottom: 2px solid #4a4a4a;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.55);
+  font-variant-numeric: normal;
+}
+.next-title {
+  background: #000;
+  color: #fff;
+  padding: 2px 10px;
+  letter-spacing: 0.02em;
+}
+.next-item {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 10px;
+  text-align: left;
+  color: #000;
+  background: #a8a8a8;
+  border-top: 1px solid #c8c8c8;
+  border-bottom: 1px solid #7a7a7a;
+}
+.next-item:hover,
+.next-item:focus-visible,
+.next-item[aria-checked="true"].next-item--lit {
+  background: #fff;
+  outline: none;
+}
+.next-item--lit {
+  background: #fff;
+}
+
 /* A spinner, the terminal kind: one glyph that steps through a braille
  * cycle. Drawn by CSS so the isolate sends no ticks for it. */
 @utility spinner {

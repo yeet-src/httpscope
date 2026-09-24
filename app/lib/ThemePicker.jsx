@@ -84,24 +84,24 @@ export default function ThemePicker() {
         <Show when={open()}>
           {/* The menu, above the bar: hovering a row previews it on the
               page, leaving the menu reverts, a click keeps. */}
-          <ul class="absolute bottom-full left-0 mb-px min-w-48 border border-rule bg-mode py-1" role="menu" onMouseLeave={() => { setPreview(null); apply(chosen()); }}>
+          <div class="next-menu absolute bottom-full left-0 mb-1 min-w-52" role="menu" onMouseLeave={() => { setPreview(null); apply(chosen()); }}>
+            <div class="next-title">Theme</div>
             <For each={THEMES}>
               {([k, name]) => (
-                <li>
-                  <button
-                    class={`flex w-full items-baseline gap-3 px-3 py-0.5 text-left hover:text-fg ${shown() === k ? "bg-fg text-bg" : ""}`}
-                    role="menuitem"
-                    onMouseEnter={() => hover(k)}
-                    onFocus={() => hover(k)}
-                    onClick={() => choose(k)}
-                  >
-                    <span class="w-3">{chosen() === k ? "•" : ""}</span>
-                    {name}
-                  </button>
-                </li>
+                <button
+                  class={`next-item ${shown() === k ? "next-item--lit" : ""}`}
+                  role="menuitemradio"
+                  aria-checked={chosen() === k}
+                  onMouseEnter={() => hover(k)}
+                  onFocus={() => hover(k)}
+                  onClick={() => choose(k)}
+                >
+                  <span class="w-3">{chosen() === k ? "✓" : ""}</span>
+                  <span class="flex-1">{name}</span>
+                </button>
               )}
             </For>
-          </ul>
+          </div>
         </Show>
       </span>
       <span class="ml-auto shrink-0 px-3 py-0.5">{preview() && preview() !== chosen() ? `previewing ${label(preview())} · click to keep` : ""}</span>
