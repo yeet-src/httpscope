@@ -52,6 +52,7 @@ export default function ThemePicker() {
     });
   });
   const close = () => {
+    clearTimeout(pending);
     setOpen(false);
     setPreview(null);
     apply(chosen());
@@ -65,18 +66,27 @@ export default function ThemePicker() {
     }
     close();
   };
+  /* A preview waits a beat, so running the pointer down the list does
+   * not flash every palette on the way to one. */
+  let pending = null;
   const hover = (name) => {
-    setPreview(name);
-    apply(name);
+    clearTimeout(pending);
+    pending = setTimeout(() => {
+      setPreview(name);
+      apply(name);
+    }, 350);
+  };
+  const unhover = () => {
+    clearTimeout(pending);
+    setPreview(null);
+    apply(chosen());
   };
   const shown = () => preview() ?? chosen();
   const label = (k) => THEMES.find(([key]) => key === k)?.[1] ?? k;
 
   return (
     <div class="fixed inset-x-0 bottom-0 flex items-stretch border-t border-rule bg-mode text-dim" data-theme-menu>
-      {/* Powerline-style segments: an inverted block for the name, then
-          the theme segment, which is the menu's handle. */}
-      <span class="shrink-0 bg-fg px-3 py-0.5 text-bg">httpscope</span>
+      {/* The theme segment is the menu's handle. */}
       <span class="relative">
         <button class={`px-3 py-0.5 hover:text-fg ${open() ? "bg-rule text-fg" : ""}`} onClick={() => (open() ? close() : setOpen(true))} aria-haspopup="menu" aria-expanded={open()}>
           theme <span class="text-fg">{label(chosen())}</span> {open() ? "▾" : "▴"}
@@ -84,7 +94,7 @@ export default function ThemePicker() {
         <Show when={open()}>
           {/* The menu, above the bar: hovering a row previews it on the
               page, leaving the menu reverts, a click keeps. */}
-          <div class="next-menu absolute bottom-full left-0 mb-1 min-w-52" role="menu" onMouseLeave={() => { setPreview(null); apply(chosen()); }}>
+          <div class="next-menu absolute bottom-full left-0 mb-1 min-w-52" role="menu" onMouseLeave={unhover}>
             <div class="next-title">Theme</div>
             <For each={THEMES}>
               {([k, name]) => (
