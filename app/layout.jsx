@@ -21,7 +21,8 @@ export default function Layout(props) {
 
   return (
     <div class="min-h-screen bg-bg text-fg">
-      <main class="mx-auto w-full max-w-screen-2xl px-4 py-4">
+      {/* pb-10: room for the mode line fixed along the bottom. */}
+      <main class="mx-auto w-full max-w-screen-2xl px-4 pb-10 pt-4">
         <nav class="mb-4 flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-rule pb-2">
           <span class="text-fg">httpscope</span>
           {routes.map(([href, name, end]) => (
@@ -32,16 +33,14 @@ export default function Layout(props) {
           {/* A plain page served by Node, not a route in the isolate: the
               client intercepts same-origin anchors as navigation unless
               they open elsewhere, so this opens a tab. */}
-          <span class="ml-auto flex items-baseline gap-4">
-            <ThemePicker />
-            <a href="/api" target="_blank" rel="noopener" class="text-dim hover:text-fg">
-              [api]
-            </a>
-          </span>
+          <a href="/api" target="_blank" rel="noopener" class="ml-auto text-dim hover:text-fg">
+            [api]
+          </a>
         </nav>
 
         {props.children}
       </main>
+      <ThemePicker />
     </div>
   );
 }
