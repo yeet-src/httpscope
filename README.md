@@ -36,7 +36,12 @@ the same process, once a second, except drift which is a stream.
 
 The palette is the template's: a terminal's sixteen colours, no boxes,
 structure from whitespace. Colour is never the only channel — a red
-status sits beside its number.
+status sits beside its number. Every colour is a token, so the nav
+offers themes — the terminal default, an all-white `paper`, Solarized
+dark and light, Gruvbox dark and light, Nord, Dracula, Tokyo Night,
+One Light — each a block of overrides in `globals.css`; the picker is a
+browser-side island (`app/lib/ThemePicker.jsx`) that remembers the
+choice per browser, since the isolate's view is shared.
 
 ```sh
 npm run dev                                # http://localhost:3000

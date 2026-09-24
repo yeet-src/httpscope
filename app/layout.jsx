@@ -6,6 +6,7 @@
  */
 import { Link } from "yeetkit";
 
+import ThemePicker from "@/lib/ThemePicker.jsx";
 import { ensureStarted } from "@/lib/scope.js";
 
 ensureStarted().catch((error) => console.error("httpscope pipeline failed to start:", error?.message ?? error));
@@ -31,9 +32,12 @@ export default function Layout(props) {
           {/* A plain page served by Node, not a route in the isolate: the
               client intercepts same-origin anchors as navigation unless
               they open elsewhere, so this opens a tab. */}
-          <a href="/api" target="_blank" rel="noopener" class="ml-auto text-dim hover:text-fg">
-            [api]
-          </a>
+          <span class="ml-auto flex items-baseline gap-4">
+            <ThemePicker />
+            <a href="/api" target="_blank" rel="noopener" class="text-dim hover:text-fg">
+              [api]
+            </a>
+          </span>
         </nav>
 
         {props.children}
