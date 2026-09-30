@@ -20,7 +20,7 @@
  */
 
 import { execute } from "@/lib/query/query.js";
-import { ai, queryFinished, queryProgress, queryStarted, recentTransactions, snapshot, transform } from "@/lib/scope.js";
+import { ai, kernelStruct, queryFinished, queryProgress, queryStarted, recentTransactions, segments, snapshot, transform, walkPlan } from "@/lib/scope.js";
 
 const bad = (message, status = 400) => Response.json({ errors: [{ message }] }, { status });
 
@@ -95,6 +95,9 @@ async function streamRun({ query, variables = null, operationName = null }, requ
           loaders: {
             transactions: (where, limit) => recentTransactions(where, limit),
             transform: (program, rows) => transform(program, rows),
+            segments: (select, options) => segments(select, options),
+            plan: (select) => walkPlan(select),
+            struct: (name) => kernelStruct(name),
             ai: (instruction, rows, list, options) => ai(instruction, rows, list, { ...options, queryId: id }),
           },
         });
@@ -130,6 +133,9 @@ async function run({ query, variables = null, operationName = null }, request, m
     loaders: {
       transactions: (where, limit) => recentTransactions(where, limit),
       transform: (program, rows) => transform(program, rows),
+      segments: (select, options) => segments(select, options),
+      plan: (select) => walkPlan(select),
+      struct: (name) => kernelStruct(name),
       ai: (instruction, rows, list, options) => ai(instruction, rows, list, { ...options, queryId: id }),
     },
   });

@@ -77,6 +77,49 @@ numbers take \`{ eq, ne, gt, gte, lt, lte }\`. Variables work as in any
 GraphQL: \`query($s: String!) { services(name: $s) { name } }\` with
 \`"variables": { "s": "…" }\`.
 
+## The kernel's view
+
+\`segments\` is not from the model: it runs a program on the kernel's
+own TCP state, live, for the duration of the query. Name the struct
+members you want and they are read per delivered segment, where this
+kernel's BTF says they are — any member of \`struct sock\`, \`tcp_sock\`,
+\`inet_sock\`, \`inet_connection_sock\` or \`sk_buff\`, through pointers
+into other objects, no table of offsets involved:
+
+    { segments(select: ["cwnd", "srtt", "inflight: tcp.snd_nxt - tcp.snd_una", "dev"], limit: 20, ms: 3000) {
+        t comm sport daddr dport values } }
+
+    # the route's device and the protocol behind the socket: two pointer chases
+    { segments(select: ["iface: sock.sk_dst_cache.dev.name", "mtu: sock.sk_dst_cache.dev.mtu", "proto"], limit: 5) { daddr values } }
+
+    # a window of the segment's bytes, as text or as a JSON field — on one port, data segments only
+    { segments(select: ["req: payload(0, 120, text)", "id: payload(0, 200, json:id)"], ports: [8080], data: true, limit: 10) {
+        comm sport dport len linear values } }
+
+    # congestion state is a 5-bit field; bitfields read by position
+    { segments(select: ["ca", "lost", "retrans", "rto"], limit: 20) { t daddr values } }
+
+Entries are \`alias: root.member…\` (roots \`sock tcp inet icsk skb\`) or an
+alias — \`cwnd ssthresh sndNxt sndUna rcvNxt sndWnd rcvWnd srtt mdev mss
+retrans lost sacked bytesAcked bytesReceived bytesSent segsIn segsOut ca
+rto proto dev skbLen rcvbuf sndbuf inode dport sport daddr saddr state\`.
+\`a - b\` and \`a + b\` compute in the kernel; \`member(kind[, size])\` reads
+the bytes another way (\`hex str ip4 ip6 port be bytes text json:field\`);
+\`payload(offset, len[, kind])\` is the segment's application bytes past
+the TCP header — read in the kernel when the skb's head holds them
+(\`linear\` on the row says how many), else from the wire tap's copy of
+the same packet, matched by flow and sequence number (whole bodies,
+reassembled, are in \`transactions\`). How each member
+reads back — signedness, big-endian typedefs, enum names, strings,
+bitfields — comes from its type. Eight fields, sixteen ops each (a
+pointer costs two); the tracepoint is receive-side, so a flow shows as
+its peer's segments arrive. \`plan(select: […]) { name ops decode }\`
+compiles without running; \`struct(name: "tcp_sock") { members { name offset kind type bitfield } }\`
+lists what there is. A busy host delivers thousands of segments a
+second, most of them bare ACKs: \`ports: [443]\` and \`data: true\` narrow
+in the kernel, \`everyMs\` thins. \`values\` is JSON keyed by alias, so a
+tail sees \`$.values.cwnd\`.
+
 ## Shaping the answer
 
 Two things sit on top of plain GraphQL, for criteria the schema did not

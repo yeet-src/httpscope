@@ -26,6 +26,7 @@
  */
 
 import { stream as aiStream } from "yeet:ai";
+import btf from "yeet:btf";
 import { decodeContentEncoding } from "yeet:compression";
 
 import { utf8 } from "./http/bytes.js";
@@ -38,10 +39,14 @@ import { rootsOf } from "./gql.js";
 import { attribute } from "./probes/attribute.js";
 import { snapshot as inventory } from "./probes/conns.js";
 import { nsPath, targetFor } from "./probes/discover.js";
-import { TLS, WIRE } from "./probes/objects.js";
+import { TLS, WALK, WIRE } from "./probes/objects.js";
 import { classify, libsslPath } from "./probes/runtimes.js";
 import { attachTls } from "./probes/tlscore.js";
+import { attachWalk } from "./probes/walk.js";
 import { attachWire } from "./probes/wire.js";
+import { compile as compileWalk } from "./walk/compile.js";
+import { fillPayloads, wireKey } from "./walk/join.js";
+import { opText } from "./walk/vm.js";
 
 /* The app's own listeners: never captured, or the UI would watch itself. */
 const OWN_PORTS = [3000, 3001, 3002];
@@ -239,6 +244,82 @@ export async function transform(program, rows) {
   return new Function("rows", program)(rows);
 }
 
+/* ---- the kernel's view -------------------------------------------------
+ *
+ * The walk VM (bpf/walk) runs a selection of struct members per
+ * delivered segment, resolved against this kernel's BTF at query time.
+ * One program runs at a time; a query holds the VM for `ms` at most.
+ */
+const SEGMENTS_MAX = 500;
+const SEGMENTS_MS_MAX = 30_000;
+/* The wire tap's recent packets, kept for payload windows: this many,
+ * the first WIRE_KEEP bytes of each. */
+const WIRE_RECENT = 4096;
+const WIRE_KEEP = 1024;
+const clamp = (v, lo, hi, dflt) => Math.min(hi, Math.max(lo, Number.isFinite(Number(v)) ? Number(v) : dflt));
+
+/** Compile `select` (strings, see app/lib/walk/compile.js) and run it: rows of `{ at, t, cpu, flow…, pid, comm, peer, values }`. */
+export async function segments(select, { limit = 50, ms = 2000, everyMs = 1, ports = null, data = false } = {}) {
+  const p = await ensureStarted();
+  if (!p.walk) throw new Error(`the walk VM is not attached: ${p.state.walkError ?? "unknown reason"}`);
+  const fields = await compileWalk(btf, select);
+  const focus = (ports ?? []).map(Number).filter((n) => Number.isInteger(n) && n > 0 && n < 65536).slice(0, 64);
+  const rows = await p.walk.capture(fields, { limit: clamp(limit, 1, SEGMENTS_MAX, 50), ms: clamp(ms, 20, SEGMENTS_MS_MAX, 2000), gapMs: clamp(everyMs, 0, 60_000, 1), ports: focus, data: Boolean(data) });
+  /* A payload window the skb's head could not serve (the payload was
+   * in page fragments — loopback, header-splitting drivers) is filled
+   * from the wire tap's copy of the same packet. */
+  fillPayloads(rows, fields, (key) => p.state.wireRecent.get(key));
+  /* The ring hands over rows in the order CPUs committed them, not in
+   * time order; `t` is measured from the earliest, so sort first. */
+  rows.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+  const t0 = rows[0]?.ts;
+  return rows.map((r) => {
+    const who = attribute({ a: { addr: r.saddr, port: r.sport }, b: { addr: r.daddr, port: r.dport } }, p.state.rows);
+    return {
+      at: r.at,
+      t: t0 != null ? Number(r.ts - t0) / 1e6 : 0,
+      cpu: r.cpu,
+      family: r.family,
+      state: r.state,
+      sport: r.sport,
+      dport: r.dport,
+      saddr: r.saddr,
+      daddr: r.daddr,
+      seq: r.seq,
+      len: r.len,
+      linear: r.linear,
+      pid: who.a?.pid ?? null,
+      comm: who.a?.comm ?? null,
+      peer: who.b?.pid ? `${who.b.comm ?? "pid"}:${who.b.pid}` : null,
+      values: r.values,
+    };
+  });
+}
+
+/** What `segments(select)` would run, without running it. */
+export async function walkPlan(select) {
+  const fields = await compileWalk(btf, select);
+  return fields.map((f) => ({ name: f.name, source: f.source, ops: [...f.pre, ...f.body].map(opText), decode: f.decode }));
+}
+
+/** A kernel struct's members from BTF, anonymous unions and structs flattened into it with their offsets. */
+export async function kernelStruct(name) {
+  const t = await btf.type(name, { kind: "struct" }).catch(() => btf.type(name, { kind: "union" })).catch(() => null);
+  if (!t) return null;
+  const out = [];
+  const flatten = async (type, base) => {
+    for (const m of type.members ?? []) {
+      if (!m.name && (m.type?.kind === "struct" || m.type?.kind === "union")) {
+        await flatten(await btf.expand(m.type.id), base + (m.offset ?? 0));
+        continue;
+      }
+      out.push({ name: m.name ?? "", offset: base + (m.offset ?? 0), kind: m.type?.kind ?? "?", type: m.type?.name ?? null, size: m.type?.size ?? null, bitfield: m.bitfield ? `${m.bitfield.bit_offset}:${m.bitfield.bit_size}` : null });
+    }
+  };
+  await flatten(t, 0);
+  return { name: t.name, size: t.size ?? 0, members: out };
+}
+
 /** The model as plain data, for the query layer. */
 export async function snapshot() {
   const p = await ensureStarted();
@@ -253,6 +334,7 @@ export async function status() {
     startedAt: s.startedAt,
     uptimeMs: Date.now() - s.startedAt,
     wire: { interfaces: p.wire.ifindex, counters: await p.wire.stats().catch(() => null), segments: s.segments },
+    walk: p.walk ? { attached: true, counters: await p.walk.stats().catch(() => null), wireRecent: s.wireRecent.size } : { attached: false, reason: s.walkError ?? null },
     flows: p.tcp.list().length,
     connections: p.decoder.connections().length,
     /* Every live connection the decoder holds: what it decided it was
@@ -271,7 +353,7 @@ async function start() {
   /* `tls` is keyed by the binary as the host can open it. `comms` maps
    * a pid to its comm, for naming what a TLS tap reports (a tap's
    * record has a pid and nothing else). */
-  const state = { startedAt: Date.now(), segments: 0, transactions: 0, errors: [], tls: new Map(), comms: new Map(), flows: new Map(), rows: [], listeners: new Map(), recent: [], queries: [], ai: { calls: 0, inputTokens: 0, outputTokens: 0, lastMs: null, model: null, lastStop: null } };
+  const state = { startedAt: Date.now(), segments: 0, transactions: 0, errors: [], tls: new Map(), comms: new Map(), flows: new Map(), rows: [], listeners: new Map(), recent: [], queries: [], wireRecent: new Map(), ai: { calls: 0, inputTokens: 0, outputTokens: 0, lastMs: null, model: null, lastStop: null } };
   const fail = (where) => (error) => {
     state.errors.push({ at: Date.now(), where, message: String(error?.message ?? error) });
     if (state.errors.length > MAX_ERRORS) state.errors.shift();
@@ -454,15 +536,36 @@ async function start() {
     await Promise.all([...seen].map(([binary, { label, pids }]) => tap(binary, { label, pid: pids[0] }).then(() => pids.forEach((pid) => state.tls.get(binary)?.pids.add(pid)))));
   };
 
+  /* The last WIRE_RECENT packets with payload, by flow and sequence
+   * number, for segments(): a Map keeps insertion order, so the oldest
+   * key is the first. A packet split over records is keyed per record
+   * at its own sequence number. */
+  const rememberPacket = (r) => {
+    if (!r.capLen) return;
+    const key = wireKey(r.saddr, r.sport, r.daddr, r.dport, r.seq + r.off);
+    if (state.wireRecent.has(key)) state.wireRecent.delete(key);
+    state.wireRecent.set(key, r.data.length > WIRE_KEEP ? r.data.slice(0, WIRE_KEEP) : r.data);
+    if (state.wireRecent.size > WIRE_RECENT) state.wireRecent.delete(state.wireRecent.keys().next().value);
+  };
+
   const wire = await attachWire(WIRE, {
     ignorePorts: OWN_PORTS,
     onRecord: (r) => {
       state.segments++;
+      rememberPacket(r);
       tcp.push(r);
     },
     onError: fail("wire"),
   });
   await wire.captureAll(true);
+  /* The walk VM: quiet until a query runs a program on it. A kernel
+   * without bpf_loop or the tracepoint leaves it unattached; segments()
+   * then says why. */
+  const walk = await attachWalk(WALK, { ignorePorts: OWN_PORTS, onError: fail("walk") }).catch((error) => {
+    fail("walk")(error);
+    state.walkError = String(error?.message ?? error);
+    return null;
+  });
   await preattach();
 
   const timers = [
@@ -492,9 +595,11 @@ async function start() {
     decoder,
     tcp,
     wire,
+    walk,
     async stop() {
       for (const t of timers) clearInterval(t);
       for (const [, entry] of state.tls) await entry.session?.stop().catch(() => {});
+      await walk?.stop().catch(() => {});
       await wire.stop();
       pipeline = null;
     },

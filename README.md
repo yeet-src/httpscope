@@ -120,7 +120,7 @@ decides to ask for.
 
 | file | does |
 |---|---|
-| `schema.js` | the SDL: `summary`, `services` (with `stats` aggregates), `endpoints`, `endpoint`, `drift`, `transactions`. Times are ms since the epoch with an `ago` in seconds beside them; `since` arguments are seconds; `path` and `service` arguments take `*` |
+| `schema.js` | the SDL: `summary`, `services` (with `stats` aggregates), `endpoints`, `endpoint`, `drift`, `transactions`, and the kernel's view — `segments`, `plan`, `struct` (layer 1, the walk VM). Times are ms since the epoch with an `ago` in seconds beside them; `since` arguments are seconds; `path` and `service` arguments take `*` |
 | `query.js` | `execute(snapshot, source, { variables, loaders })` → `{ data, errors }`; `check(source)` validates without running. The mapping from the model's rows to the types, the derived metrics, `where`, `orderBy`, the directive pass and the tail |
 | `filter.js` | the `Num`/`Str` comparisons and the transaction filter, with no `graphql` dependency, so the isolate filters its ring with the same code |
 
@@ -311,6 +311,7 @@ them (`bpf/include/events.h`).
 | `bin/gotls.bpf.o` | `crypto/tls.(*Conn).Write` | Go register ABI (`bpf/include/goabi.h`). Attached by raw file offset from the binary's `.gopclntab`, so a stripped binary works. |
 | `bin/gotls_read.bpf.o` | `crypto/tls.(*Conn).Read` | uprobes at each RET of the function, never a uretprobe: Go's stack copier dies on a uretprobe trampoline (observed on go1.27). The RET sites come from pclntab's per-PC stack-delta table (`app/lib/probes/gopclntab.js`, pure JS, no binutils). Entry and return keyed by the `g` pointer, so no per-version goid offset. |
 | `bin/rustls.bpf.o` | `PlaintextSink::write`, `CommonState::take_received_plaintext` | uprobes matched by **regex** against demangled names, since rustls symbols carry a per-build hash. |
+| `bin/walk.bpf.o` | `raw_tp/tcp_probe` | **The kernel's view.** Not a capture: a once-verified interpreter that runs a small op program per field — patched in from a query, never reloaded — over the socket and the skb of every delivered segment. What it reads is decided at query time from this kernel's BTF (below). |
 
 The TLS taps share `bpf/include/tap.h`: the ring buffers, a live focus
 filter (one connection and/or one pid), and the correlation that finds a
@@ -362,6 +363,58 @@ captured by the tap with full attribution.
 mapped `libssl` wins, else the exe, both reached through
 `/proc/<pid>/root` so containers work (`app/lib/probes/discover.js`).
 
+### The walk VM: the kernel's view
+
+`segments` is the one query root that is not answered from captured
+bytes. It runs on `bin/walk.bpf.o`, an interpreter attached to
+`raw_tp/tcp_probe` — the tracepoint in `tcp_rcv_established` that fires
+for every segment an established flow receives, with the socket and the
+skb in hand. The program does not know any struct's layout. It runs, per
+field, up to sixteen ops (`base`, `off`, `deref`, `read`, `str`, scratch
+arithmetic, forward skips) from an array map, and the ops are written by
+the host for each query:
+
+```
+{ segments(select: ["cwnd", "srtt", "inflight: tcp.snd_nxt - tcp.snd_una",
+                    "iface: sock.sk_dst_cache.dev.name", "req: payload(0, 80, text)"],
+           ports: [443], data: true, limit: 20, ms: 3000) { t comm daddr values } }
+```
+
+`app/lib/walk/compile.js` turns each entry into ops through `yeet:btf`:
+`walk("sock", "sk_dst_cache.dev.name")` answers, on the running kernel,
+with the hops a bounded interpreter takes to reach that member — a
+pointer crossed is `off` + `deref`, the terminal is `off` + `read` — so
+there is no table of offsets in the tree, no closure of supported
+structs, and no depth limit but the op budget (a pointer costs two).
+The member's type decides how its bytes read back, also from BTF: an
+int's signedness, a `__be16`/`__be32` typedef (a port, an address), an
+enum's names, a `char[]`, a bitfield's position, `struct in6_addr`; a
+query overrides with `(kind)`. This is what tcpwalk2 does with a
+54 KB schema table rendered at build time from one kernel's BTF — a
+table that, checked here, had `snd_cwnd` forty bytes from where this
+kernel keeps it. The kernel side is derived from tcpwalk2's VM with
+one structural change: every op runs as a `bpf_loop` step, so the
+verifier walks the dispatch once per call site instead of once per
+slot per section per field, which on this kernel was the difference
+between a million-instruction rejection and a load.
+
+The event carries the socket's 4-tuple, state and the segment's
+sequence number and lengths, read through CO-RE in a fixed prologue,
+so the host joins a row to the inventory (pid, comm, the peer) without
+spending a field. `payload(offset, len)` is the segment's application
+bytes: the prologue finds where the TCP header ends and hands that
+address to the ops as a register. Only the skb's linear head is
+readable there, and on this box neither loopback nor the wifi driver
+keeps payload in it (header split; the row's `linear` says how much
+there was) — so a window the head could not serve is filled from the
+wire tap's copy of the same packet, matched by flow and sequence number
+(`app/lib/walk/join.js`), which is where the `values` in the example
+above come from. `plan(select: […])` shows the ops without running;
+`struct(name: "tcp_sock")` lists a struct's members from BTF. Filters
+run in the kernel: `ports`, `data: true` (skip bare ACKs), `everyMs`
+(one event per interval at most, since the tracepoint fires per
+segment). One program runs at a time; a query holds the VM for `ms`.
+
 ### Build and self-test
 
 ```sh
@@ -371,6 +424,7 @@ yeet run scripts/selftest-socket.js -- --port 8080     # then curl a local serve
 yeet run scripts/selftest-tls.js -- --bin /usr/lib/libssl.so.3   # then curl https://…
 yeet run scripts/selftest-tls.js -- --pid <pid>                  # resolves the binary itself
 yeet run scripts/selftest-tls.js -- --bin ./gobin --go "$(node scripts/go-rets.mjs ./gobin)"
+yeet run scripts/selftest-walk.js -- --ports 8093 --data --select "cwnd, srtt, req: payload(0, 80, text)"
 ```
 
 Verified here (kernel 7.2, x86_64): curl over HTTP/2 (`ssl`), Python
@@ -428,5 +482,11 @@ buffer held before — a response head where curl's body should be.
   (pid, 4-tuple) once per socket would close the gap.
 - The TLS↔socket correlation is a heuristic on event-loop runtimes; the
   decoder's `Host` header is the authority for naming a service.
+- The walk VM is receive-side (`tcp_probe` fires as a peer's segment
+  arrives), reads eight fields of sixteen ops per segment, and holds
+  one program at a time: concurrent `segments` queries run in turn.
+  `skb->dev` is already NULL there; the route's device is
+  `sock.sk_dst_cache.dev`. Pointer chases read live kernel memory with
+  no lock, so a value can be a stale or torn read, never a crash.
 - HTTP/2 is decoded when its plaintext is seen (the TLS taps, or h2c on
   the wire). Server push is followed; HTTP/3 (QUIC) is not seen at all.

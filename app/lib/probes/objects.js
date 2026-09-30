@@ -15,6 +15,7 @@ const spec = (file) => ({ exe: `../bin/${file}`, base: import.meta.dirname });
 
 export const SOCKET = spec("socket.bpf.o");
 export const WIRE = spec("wire.bpf.o");
+export const WALK = spec("walk.bpf.o");
 
 export const TLS = {
   openssl: spec("ssl.bpf.o"),

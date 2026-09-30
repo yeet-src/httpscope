@@ -206,6 +206,62 @@ type Query {
   endpoint(service: String!, method: String!, path: String!, role: Role = CLIENT): Endpoint
   """Shape changes, oldest first. \`since\` is seconds; \`kinds\` filters by event kind."""
   drift(since: Float, kinds: [String!], service: String, path: String, limit: Int = 200): [DriftEvent!]!
+  """The kernel's own view of TCP, live: for up to \`ms\` or \`limit\` rows, every delivered segment (one per \`everyMs\` at most) with the struct members \`select\` names, read in the kernel where this kernel's BTF says they are. An entry is \`alias: root.member.member…\` — roots sock, tcp, inet, icsk (the socket, as each struct) and skb (the segment) — or an alias (cwnd, srtt, mss, dport, dev, proto, inode, …); a pointer in the path is followed. \`a - b\` or \`a + b\` computes in the kernel; \`payload(offset, len, kind)\` is a window of the segment's bytes; \`member(kind[, size])\` reads it another way (hex, str, ip4, text, bytes, json:field). \`ports\` keeps flows with one of those ports; \`data: true\` skips segments carrying no payload (pure ACKs) — both in the kernel. Receive side only; at most 8 fields, 16 ops each. \`plan\` shows what would run; \`struct\` lists a struct's members."""
+  segments(select: [String!]!, limit: Int = 50, ms: Int = 2000, everyMs: Float = 1, ports: [Int!], data: Boolean = false): [Segment!]!
+  """What \`segments\` would run for \`select\`, without running it: each field's VM ops and how its bytes decode."""
+  plan(select: [String!]!): [PlannedField!]!
+  """A kernel struct's members from this kernel's BTF, for finding what to select: \`struct(name: "tcp_sock")\`."""
+  struct(name: String!): KernelStruct
+}
+
+"""One delivered TCP segment as the kernel saw it: the socket's flow (its own end first), who holds it, and the selected members under \`values\` by name — null where a walk failed (a NULL pointer)."""
+type Segment {
+  at: Float!
+  ago: Float!
+  """Milliseconds after the first row of this answer."""
+  t: Float!
+  cpu: Int!
+  family: Int!
+  """ESTABLISHED, CLOSE_WAIT, …"""
+  state: String!
+  sport: Int!
+  dport: Int!
+  saddr: String!
+  daddr: String!
+  """The segment's sequence number."""
+  seq: Float!
+  """Its payload in bytes, and how many of those the kernel held in the skb's head: what \`payload()\` read there — beyond it, the window came from the wire tap's copy of the packet."""
+  len: Int!
+  linear: Int!
+  pid: Int
+  comm: String
+  """The other end, when it is a local process: comm:pid."""
+  peer: String
+  values: JSON!
+}
+
+type PlannedField {
+  name: String!
+  source: String!
+  ops: [String!]!
+  decode: JSON!
+}
+
+type KernelStruct {
+  name: String!
+  size: Int!
+  members: [KernelMember!]!
+}
+
+type KernelMember {
+  name: String!
+  offset: Int!
+  """int, ptr, struct, union, array, enum, typedef, …"""
+  kind: String!
+  type: String
+  size: Int
+  """bit offset:size within the member's storage unit, for a bitfield."""
+  bitfield: String
 }
 
 type Summary {

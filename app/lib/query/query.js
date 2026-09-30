@@ -35,6 +35,8 @@ const roleArg = (r) => (r ? r.toLowerCase() : null);
  *   loaders.transform(code, rows)        runs a pipeline tail's JavaScript
  *                                        over rows (in the app: the isolate);
  *                                        without it, here
+ *   loaders.segments(select, opts)       runs a walk-VM program (the kernel);
+ *   loaders.plan(select), loaders.struct(name)   compile only / BTF lookup
  *
  * Two extensions on top of GraphQL, for criteria the schema did not
  * anticipate: field directives (@when gates a row on a value, @div and
@@ -548,6 +550,17 @@ function root(snap, now, loaders) {
       if (limit != null && rows.length > limit) rows = rows.slice(rows.length - limit);
       return rows.map(driftEvent);
     },
+
+    segments: async ({ select, limit, ms, everyMs, ports, data }) => {
+      if (!loaders.segments) throw new Error("segments run on the kernel's walk VM; not available here");
+      const rows = await loaders.segments(select, { limit, ms, everyMs, ports: ports ?? null, data: Boolean(data) });
+      return rows.map((r) => ({ ...r, ago: ago(r.at) }));
+    },
+    plan: async ({ select }) => {
+      if (!loaders.plan) throw new Error("plan needs the kernel's BTF; not available here");
+      return loaders.plan(select);
+    },
+    struct: async ({ name }) => (loaders.struct ? loaders.struct(name) : null),
 
     transactions: async ({ where, limit, bodyBytes }) => {
       const rows = loaders.transactions ? await loaders.transactions(where ?? null, limit ?? 50) : filterTransactions(snap.recent ?? [], where, limit ?? 50, t);
