@@ -31,9 +31,13 @@ name: kernel-matrix
 # guarded, so that 6.4 floor is for the build host only, where vmlinux.h is
 # generated from the runner's own BTF by `make bpf`. So the gating lines are
 # the LTS and stable kernels from 6.6 up. bpf-next is run but does not gate:
-# it is a moving target, and 7.3-rc4 made the walk VM's bpf_loop callbacks
-# cost 850k verifier instructions against 14k on 6.12, which is worth seeing
-# but not worth blocking a merge on until it lands in a release.
+# it is a moving target, and what it shows tends to arrive in stable soon
+# after — the walk VM's three nested bpf_loops verify in 14k instructions on
+# 6.12 and 6.18, but 7.2.7 backported a batch of verifier precision fixes
+# for bpf_loop callbacks ("backtracking shouldn't clear outer frame R1-R5
+# for callbacks" and kin), after which the same object costs 850k in `step`
+# alone and hits the 1M limit on 7.2.8 and on bpf-next. 7.2.6 still loads
+# it. That 7.2 row is a real rejection on a stable kernel, so it gates.
 
 on:
   workflow_dispatch:
