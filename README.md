@@ -478,9 +478,13 @@ buffer held before — a response head where curl's body should be.
   run also caught the 6.6 verifier rejecting the wire tap's
   `bpf_skb_load_bytes` size as possibly zero, since a verifier before
   6.9 does not narrow a register on a `!= 0` branch; the bound is now
-  rebuilt by arithmetic. bpf-next runs but does not gate: on 7.3-rc4 the
-  walk VM's `bpf_loop` callbacks cost 850k verifier instructions against
-  14k on 6.12 and hit the one-million limit. `make veristat-matrix` runs the same thing
+  rebuilt by arithmetic. bpf-next runs but does not gate. The open
+  finding is the walk VM: its three nested `bpf_loop`s verify in 14k
+  instructions on 6.12 and 6.18 and on this host's 7.2.6, but stable
+  7.2.7 backported a batch of verifier precision fixes for `bpf_loop`
+  callbacks, after which `step` alone costs 850k and the object hits the
+  one-million limit on 7.2.8 and on bpf-next. That row gates, because a
+  stable kernel rejecting it is the matrix's job to say. `make veristat-matrix` runs the same thing
   locally with lvh + a static qemu (Linux, KVM, root for the VM), and
   `make veristat` is the single-kernel check against this host.
 
