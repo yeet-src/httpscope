@@ -4,7 +4,7 @@
 # matrix.yml. This is a TEST HARNESS, not part of the build, and needs a
 # Linux host (ideally with /dev/kvm; without it QEMU falls back to slow TCG).
 #
-#   build/kernel-matrix.sh [kernel ...]      # default: an LTS spread + bpf-next
+#   build/kernel-matrix.sh [kernel ...]      # default: 6.6 (the TCX floor) up, + bpf-next
 #   make veristat-matrix                      # same, via the Makefile
 #
 # It uses cilium's lvh + QEMU to boot quay.io/lvh-images/kind:<kernel> images.
@@ -18,7 +18,7 @@
 
 set -eu
 
-KERNELS=${*:-"5.10-main 5.15-main 6.1-main 6.6-main 6.12-main bpf-next-main"}
+KERNELS=${*:-"6.6-main 6.12-main 6.18-main 7.2-main bpf-next-main"}
 LVH_VERSION="${LVH_VERSION:-v0.0.30}"
 SSH_PORT="${SSH_PORT:-2222}"
 MON_PORT="${MON_PORT:-45454}"

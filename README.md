@@ -467,13 +467,20 @@ buffer held before — a response head where curl's body should be.
   yeetkit dependency is by absolute path for now.
 - **Kernel matrix**: `.github/workflows/kernel-matrix.yml` (the one
   `yeet new` scaffolds, adapted to this repo's per-directory objects)
-  builds every `bin/*.bpf.o` on the runner, boots 6.1, 6.6, 6.12 and
-  bpf-next under cilium's little-vm-helper, and runs the vendored static
-  veristat in each VM via `build/verify-kernel.sh`. The summary is a grid
-  of (object, program) × kernel, since `peer_sendmsg`/`peer_recvmsg`
-  recur across the TLS taps. The socket tap loads on 6.1 despite the
-  header note above: its `iov_iter` reads are CO-RE guarded, so the 6.4
-  floor is for the build host only. `make veristat-matrix` runs the same thing
+  builds every `bin/*.bpf.o` on the runner, boots 6.6, 6.12, 6.18, 7.2
+  and bpf-next under cilium's little-vm-helper, and runs the vendored
+  static veristat in each VM via `build/verify-kernel.sh`. The summary
+  is a grid of (object, program) × kernel, since
+  `peer_sendmsg`/`peer_recvmsg` recur across the TLS taps. The floor is
+  6.6: 6.1 refuses the wire tap's TCX attach type at load, and every
+  other object loads there (the socket tap's `iov_iter` reads are CO-RE
+  guarded, so the 6.4 note above is for the build host only). The first
+  run also caught the 6.6 verifier rejecting the wire tap's
+  `bpf_skb_load_bytes` size as possibly zero, since a verifier before
+  6.9 does not narrow a register on a `!= 0` branch; the bound is now
+  rebuilt by arithmetic. bpf-next runs but does not gate: on 7.3-rc4 the
+  walk VM's `bpf_loop` callbacks cost 850k verifier instructions against
+  14k on 6.12 and hit the one-million limit. `make veristat-matrix` runs the same thing
   locally with lvh + a static qemu (Linux, KVM, root for the VM), and
   `make veristat` is the single-kernel check against this host.
 
