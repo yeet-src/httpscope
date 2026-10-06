@@ -354,9 +354,11 @@ static long walk_node(__u32 it, void *pctx)
     run_section(c, st, 1, p->n_body, st->node);
     if (!st->live || st->wrote == 0)
         return 1;
-    c->e->elen[idx] = st->wrote;
-    c->e->fcount[key] = it + 1;
-    c->e->ok |= (1u << key);
+    /* Masked again at each use: clang spills `key` as a 32-bit slot and
+     * the verifier forgets the bound on the fill. */
+    c->e->elen[idx & (MAX_FIELDS * MAX_ITERS - 1)] = st->wrote;
+    c->e->fcount[key & (MAX_FIELDS - 1)] = it + 1;
+    c->e->ok |= (1u << (key & (MAX_FIELDS - 1)));
     if (p->next_off == 0)
         return 1;
     __u64 adv = 0;
