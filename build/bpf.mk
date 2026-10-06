@@ -101,7 +101,7 @@ veristat: bpf | toolchain
 # quay.io/lvh-images/kind images with cilium's lvh + QEMU; pass kernels as
 # KERNELS="6.6-main bpf-next-main" or rely on the script's default spread.
 .PHONY: veristat-matrix
-veristat-matrix: $(BPF_OUT) | toolchain
+veristat-matrix: bpf | toolchain
 	VERISTAT="$(VERISTAT)" sh build/kernel-matrix.sh $(KERNELS)
 
 # Write a local .clangd so the editor resolves vmlinux.h, the libbpf SDK
