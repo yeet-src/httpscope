@@ -465,6 +465,17 @@ buffer held before — a response head where curl's body should be.
 - **Clean clone**: `git clone`, `npm install`, `make bpf`, `npm test`,
   `npx yeetkit build` all pass from a fresh checkout on this box. The
   yeetkit dependency is by absolute path for now.
+- **Kernel matrix**: `.github/workflows/kernel-matrix.yml` (the one
+  `yeet new` scaffolds, adapted to this repo's per-directory objects)
+  builds every `bin/*.bpf.o` on the runner, boots 6.1, 6.6, 6.12 and
+  bpf-next under cilium's little-vm-helper, and runs the vendored static
+  veristat in each VM via `build/verify-kernel.sh`. The summary is a grid
+  of (object, program) × kernel, since `peer_sendmsg`/`peer_recvmsg`
+  recur across the TLS taps. Rejections on 6.1 are expected for the wire
+  tap (TCX attach, 6.6+) and the socket tap (`iov_iter.__iov`, 6.4+);
+  they mark the floor. `make veristat-matrix` runs the same thing
+  locally with lvh + a static qemu (Linux, KVM, root for the VM), and
+  `make veristat` is the single-kernel check against this host.
 
 ### Known limits
 
