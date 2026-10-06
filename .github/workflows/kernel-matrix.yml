@@ -25,12 +25,15 @@ name: kernel-matrix
 # tracking the latest build, with no tag to bump and immune to quay's pruning of
 # old stamps.
 #
-# Expected failures are part of the signal: the wire tap attaches with TCX
-# (6.6+), so a rejection of it on 6.1 marks the floor, not a regression. The
-# legacy socket tap names `iov_iter.__iov`, which only exists from 6.4, but
-# its reads are CO-RE guarded, so it loads on older kernels; the 6.4 floor is
-# for the build host, since vmlinux.h is generated from the runner's own BTF
-# by `make bpf`. ubuntu-latest is well past it.
+# The floor is 6.6: the wire tap attaches with TCX, which 6.1 refuses at load
+# (zero instructions verified), and every other object loads on 6.1 — the
+# legacy socket tap names `iov_iter.__iov` (6.4+) but its reads are CO-RE
+# guarded, so that 6.4 floor is for the build host only, where vmlinux.h is
+# generated from the runner's own BTF by `make bpf`. So the gating lines are
+# the LTS and stable kernels from 6.6 up. bpf-next is run but does not gate:
+# it is a moving target, and 7.3-rc4 made the walk VM's bpf_loop callbacks
+# cost 850k verifier instructions against 14k on 6.12, which is worth seeing
+# but not worth blocking a merge on until it lands in a release.
 
 on:
   workflow_dispatch:
@@ -50,11 +53,18 @@ jobs:
         # Kernel lines to verify. Each is resolved to its newest date-stamped
         # lvh image at run time (see the header).
         kernel:
-          - '6.1'
           - '6.6'
           - '6.12'
+          - '6.18'
+          - '7.2'
           - 'bpf-next'
+        # bpf-next is informational: a failure there is recorded in the grid
+        # but does not fail the job, so the summary's gate ignores it.
+        include:
+          - kernel: 'bpf-next'
+            informational: true
     name: kernel ${{ matrix.kernel }}
+    continue-on-error: ${{ matrix.informational == true }}
     steps:
       - uses: actions/checkout@v4
 
@@ -197,7 +207,7 @@ jobs:
                       cells.append("❌"); fail += 1
               print(f"| `{obj}` | `{prog}` | " + " | ".join(cells) + " |")
           print()
-          print("✅ accepted · ❌ rejected · ⚪ not run\n")
+          print("✅ accepted · ❌ rejected · ⚪ not run · bpf-next is informational and does not gate\n")
           total = len(progs) * len([k for k in kernels if data[k] is not None])
           verb = "all programs loaded on every kernel" if fail == 0 else f"{fail} of {total} program×kernel checks failed"
           print(f"**{len(progs)} program(s) × {len(kernels)} kernel(s) — {verb}.**")

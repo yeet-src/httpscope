@@ -208,9 +208,20 @@ static __always_inline void emit(struct __sk_buff *skb, struct pkt *p, __u8 hook
         __u32 cap = len > off ? len - off : 0;
         if (cap > CAP_MASK)
             cap = CAP_MASK;
+        if (cap == 0) {
+            e->cap_len = 0;
+            bpf_ringbuf_submit(e, 0);
+            return;
+        }
+        /* bpf_skb_load_bytes refuses a size that may be zero, and a
+         * verifier before 6.9 does not narrow a register on the
+         * `!= 0` branch above (6.6 rejects: "R4 invalid zero-sized
+         * read: u64=[0,4094]"). Rebuild the bound by arithmetic it
+         * does track: [1, CAP_MASK + 1], an identity on [1, CAP_MASK].
+         * The barrier keeps clang from folding it away. */
         barrier_var(cap);
-        cap &= CAP_MASK;
-        if (cap && bpf_skb_load_bytes(skb, p->data_off + off, e->data, cap))
+        cap = ((cap - 1) & CAP_MASK) + 1;
+        if (bpf_skb_load_bytes(skb, p->data_off + off, e->data, cap))
             cap = 0;
         e->cap_len = cap;
         bpf_ringbuf_submit(e, 0);
