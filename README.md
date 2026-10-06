@@ -471,9 +471,9 @@ buffer held before — a response head where curl's body should be.
   bpf-next under cilium's little-vm-helper, and runs the vendored static
   veristat in each VM via `build/verify-kernel.sh`. The summary is a grid
   of (object, program) × kernel, since `peer_sendmsg`/`peer_recvmsg`
-  recur across the TLS taps. Rejections on 6.1 are expected for the wire
-  tap (TCX attach, 6.6+) and the socket tap (`iov_iter.__iov`, 6.4+);
-  they mark the floor. `make veristat-matrix` runs the same thing
+  recur across the TLS taps. The socket tap loads on 6.1 despite the
+  header note above: its `iov_iter` reads are CO-RE guarded, so the 6.4
+  floor is for the build host only. `make veristat-matrix` runs the same thing
   locally with lvh + a static qemu (Linux, KVM, root for the VM), and
   `make veristat` is the single-kernel check against this host.
 

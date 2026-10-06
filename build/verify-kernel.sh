@@ -56,7 +56,22 @@ if [ -n "${OUT_CSV:-}" ]; then
 fi
 
 # Drop the header row; fail if any program's verdict is not "success".
-if printf '%s\n' "$csv" | tail -n +2 | grep -q ',failure$'; then
+# Before failing, reload just the rejected objects in verbose mode so the
+# verifier's own explanation lands in the CI log — the first pass runs at
+# log level 0 and only reports the verdict. The log is rotated to its tail
+# (that is where the rejection reason is), bounded so a long program's
+# trace does not swamp the job output.
+failed="$(printf '%s\n' "$csv" | tail -n +2 | grep ',failure$' | cut -d, -f1 | sort -u || true)"
+if [ -n "$failed" ]; then
+	objs=""
+	for f in $failed; do
+		for o in $OBJS; do
+			[ "$(basename "$o")" = "$f" ] && objs="$objs $o"
+		done
+	done
+	echo ">> verifier log for the rejected object(s):$objs"
+	# shellcheck disable=SC2086
+	"$VERISTAT" -v -l1 --log-size=65536 $objs 2>&1 | grep -v '^\s*$' | tail -n 200 || true
 	echo "::error::BPF verifier rejected a program on kernel $KREL" >&2
 	exit 1
 fi
