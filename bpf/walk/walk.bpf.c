@@ -240,13 +240,22 @@ static long step(__u32 i, void *pst)
         else
             cur = next;
     } else if (code == WOP_READ) {
+        /* The count kept in `wrote` is a second copy of arg, opaque to
+         * clang so it is never the register handed to the helper as a
+         * size: the verifier marks a size argument precise, and a
+         * precise scalar left in the state blocks the callback-loop
+         * convergence that keeps this VM verifiable (7.2.7's bpf_loop
+         * precision fixes made that bite: 850k instructions in `step`
+         * alone against 14k for the whole object before them). */
+        __u32 w = arg;
+        barrier_var(w);
         __u32 sz = arg & (ENTRY_CAP - 1);
         if (sz == 0)
             sz = 1;
         if (bpf_probe_read_kernel(st->out, sz, (void *) cur))
             st->live = 0;
         else
-            st->wrote = sz;
+            st->wrote = w & (ENTRY_CAP - 1);
     } else if (code == WOP_STR) {
         long r = bpf_probe_read_kernel_str(st->out, ENTRY_CAP, (void *) cur);
         if (r < 0)
@@ -294,9 +303,16 @@ static long walk_node(__u32 it, void *pst)
     __u32 idx = ENTRY_IDX(st->f, it);
     __u8 *out = &st->e->edata[idx * ENTRY_CAP];
     run_section(st, p->body, p->n_body, st->node, out);
-    if (!st->live || st->wrote == 0)
+    if (!st->live)
         return 1;
+    /* Test the count after a round trip through the event, not from
+     * the state: on a range the verifier can see excludes zero this
+     * branch is predictable, and a predictable branch marks its
+     * operand precise all the way back into the step loop's entry
+     * state. A load from ring buffer memory is unknown, so it is not. */
     st->e->elen[idx] = st->wrote;
+    if (*(volatile __u32 *) &st->e->elen[idx] == 0)
+        return 1;
     st->e->fcount[st->f & (MAX_FIELDS - 1)] = it + 1;
     st->e->ok |= (1u << (st->f & (MAX_FIELDS - 1)));
     if (p->next_off == 0)
