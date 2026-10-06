@@ -161,46 +161,98 @@ struct {
     __uint(max_entries, 1 << 22);
 } events SEC(".maps");
 
-/* Everything the VM threads through its loops, on the tracepoint's
- * frame: bpf_loop callbacks each get their own frame, and the whole
- * chain shares 512 bytes, so state lives here and the callbacks hold
- * one pointer to it. */
+/* The VM's mutable state lives in a per-CPU array element, not on the
+ * stack, and each callback reaches it with a lookup. Two reasons. The
+ * bpf_loop callbacks each take a frame of the 512-byte stack the whole
+ * chain shares, so there was little room for it there. And the
+ * verifier does not track the contents of map memory, so nothing the
+ * ops do to this state can tell one loop iteration from the last: a
+ * callback loop is verified once, when its entry state converges with
+ * an earlier one, and any scalar the verifier holds precise (a size it
+ * checked, a value it predicted a branch on) blocks that. With the
+ * state on the stack, 7.2.7's bpf_loop precision fixes left this
+ * object at the 1M instruction limit, every one of the 8 x 16 x 8
+ * nested iterations simulated in full. raw_tp/tcp_probe cannot
+ * re-enter on a CPU (softirq, or process context with bottom halves
+ * off), so one element per CPU is enough.
+ *
+ * The one thing the callbacks need the verifier to keep typed is the
+ * event they write into: a ring buffer pointer kept in map memory
+ * would come back as a plain number. So it rides on the stack as the
+ * callback context, which bpf_loop requires to be a stack pointer. */
 struct walk_state {
     __u64 regs[NREGS];
-    struct walk_event *e;
     /* the field being run */
-    struct walk_prog *p;
     __u32 f;
+    __u32 section; /* 0 = pre, terminals to nav_scratch; 1 = body, to the event */
+    __u32 idx;     /* the entry a body terminal fills: ENTRY_IDX(f, it) */
     __u64 node;
     /* the section being run */
-    struct walk_op *ops;
     __u32 n;
     __u64 cur;
-    __u8 *out;
     __u32 wrote;
     __u32 skip;
     __u32 live;
     __u64 scratch[NSCRATCH];
 };
 
+struct {
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, __u32);
+    __type(value, struct walk_state);
+} state SEC(".maps");
+
+struct walk_ctx {
+    struct walk_event *e;
+};
+
+static __always_inline struct walk_state *vm_state(void)
+{
+    __u32 zero = 0;
+    return bpf_map_lookup_elem(&state, &zero);
+}
+
+/* Throwaway terminal buffer for a navigation-only pre. Global, not
+ * stack: the frames of the nested loops share the 512-byte BPF stack.
+ * CPUs may race on it; the contents are never read. */
+static __u8 nav_scratch[ENTRY_CAP];
+
+/* Where a terminal op writes: the field's entry in the event for a
+ * body section, the throwaway buffer for a pre. */
+static __always_inline __u8 *terminal_out(struct walk_ctx *c, struct walk_state *st)
+{
+    if (st->section)
+        return &c->e->edata[(st->idx & (MAX_FIELDS * MAX_ITERS - 1)) * ENTRY_CAP];
+    return nav_scratch;
+}
+
 /* One op of a straight-line section, as a bpf_loop step. Every op is a
  * branch of one dispatch the verifier walks once per call site; run
  * unrolled, the same dispatch is walked for each of the eight slots of
  * each section of each field and the state budget is gone. Returns 1
  * to stop the section: past its end, or a read failed. */
-static long step(__u32 i, void *pst)
+static long step(__u32 i, void *pctx)
 {
-    struct walk_state *st = pst;
+    struct walk_ctx *c = pctx;
+    struct walk_state *st = vm_state();
+    if (!st)
+        return 1;
     if (i >= st->n || !st->live)
         return 1;
     if (st->skip > 0) {
         st->skip--;
         return 0;
     }
-    struct walk_op *op = &st->ops[i & (MAX_STEP - 1)];
+    __u32 key = st->f & (MAX_FIELDS - 1);
+    struct walk_prog *p = bpf_map_lookup_elem(&programs, &key);
+    if (!p)
+        return 1;
+    struct walk_op *op = st->section ? &p->body[i & (MAX_STEP - 1)] : &p->pre[i & (MAX_STEP - 1)];
     __u32 code = op->code;
     __u32 arg = op->arg;
     __u64 cur = st->cur;
+    __u8 *out = terminal_out(c, st);
 
     if (code == WOP_LOADN) {
         __u64 v = 0;
@@ -240,24 +292,15 @@ static long step(__u32 i, void *pst)
         else
             cur = next;
     } else if (code == WOP_READ) {
-        /* The count kept in `wrote` is a second copy of arg, opaque to
-         * clang so it is never the register handed to the helper as a
-         * size: the verifier marks a size argument precise, and a
-         * precise scalar left in the state blocks the callback-loop
-         * convergence that keeps this VM verifiable (7.2.7's bpf_loop
-         * precision fixes made that bite: 850k instructions in `step`
-         * alone against 14k for the whole object before them). */
-        __u32 w = arg;
-        barrier_var(w);
         __u32 sz = arg & (ENTRY_CAP - 1);
         if (sz == 0)
             sz = 1;
-        if (bpf_probe_read_kernel(st->out, sz, (void *) cur))
+        if (bpf_probe_read_kernel(out, sz, (void *) cur))
             st->live = 0;
         else
-            st->wrote = w & (ENTRY_CAP - 1);
+            st->wrote = sz;
     } else if (code == WOP_STR) {
-        long r = bpf_probe_read_kernel_str(st->out, ENTRY_CAP, (void *) cur);
+        long r = bpf_probe_read_kernel_str(out, ENTRY_CAP, (void *) cur);
         if (r < 0)
             st->live = 0;
         else
@@ -266,7 +309,7 @@ static long step(__u32 i, void *pst)
         __u32 sz = arg;
         if (sz == 0 || sz > 8)
             sz = 8;
-        *(__u64 *) st->out = cur; /* all 8 written; the host reads `len` */
+        *(__u64 *) out = cur; /* all 8 written; the host reads `len` */
         st->wrote = sz;
     }
 
@@ -274,47 +317,46 @@ static long step(__u32 i, void *pst)
     return st->live ? 0 : 1;
 }
 
-/* Run a section: `ops`/`n` from cursor `start`, terminal bytes to
- * `out`. Afterwards st->cur is where the cursor ended (a navigation-only
- * pre hands its head onward) and st->wrote how much a terminal emitted. */
-static __always_inline void run_section(struct walk_state *st, struct walk_op *ops, __u32 n, __u64 start, __u8 *out)
+/* Run a section: the field's pre (0) or body (1), `n` ops from cursor
+ * `start`. Afterwards st->cur is where the cursor ended (a
+ * navigation-only pre hands its head onward) and st->wrote how much a
+ * terminal emitted. */
+static __always_inline void run_section(struct walk_ctx *c, struct walk_state *st, __u32 section, __u32 n, __u64 start)
 {
-    st->ops = ops;
+    st->section = section;
     st->n = n > MAX_STEP ? MAX_STEP : n;
     st->cur = start;
-    st->out = out;
     st->wrote = 0;
     st->skip = 0;
     st->live = 1;
     for (int i = 0; i < NSCRATCH; i++)
         st->scratch[i] = 0;
-    bpf_loop(MAX_STEP, step, st, 0);
+    bpf_loop(MAX_STEP, step, c, 0);
 }
 
 /* One chain node: run body from the node, emit an entry, advance via
  * next_off. Returns 1 to stop (NULL, a failed read, or a scalar's one
  * entry), 0 to continue. */
-static long walk_node(__u32 it, void *pst)
+static long walk_node(__u32 it, void *pctx)
 {
-    struct walk_state *st = pst;
-    struct walk_prog *p = st->p;
+    struct walk_ctx *c = pctx;
+    struct walk_state *st = vm_state();
+    if (!st)
+        return 1;
+    __u32 key = st->f & (MAX_FIELDS - 1);
+    struct walk_prog *p = bpf_map_lookup_elem(&programs, &key);
+    if (!p)
+        return 1;
     if (p->next_off && st->node == 0)
         return 1;
-    __u32 idx = ENTRY_IDX(st->f, it);
-    __u8 *out = &st->e->edata[idx * ENTRY_CAP];
-    run_section(st, p->body, p->n_body, st->node, out);
-    if (!st->live)
+    __u32 idx = ENTRY_IDX(key, it);
+    st->idx = idx;
+    run_section(c, st, 1, p->n_body, st->node);
+    if (!st->live || st->wrote == 0)
         return 1;
-    /* Test the count after a round trip through the event, not from
-     * the state: on a range the verifier can see excludes zero this
-     * branch is predictable, and a predictable branch marks its
-     * operand precise all the way back into the step loop's entry
-     * state. A load from ring buffer memory is unknown, so it is not. */
-    st->e->elen[idx] = st->wrote;
-    if (*(volatile __u32 *) &st->e->elen[idx] == 0)
-        return 1;
-    st->e->fcount[st->f & (MAX_FIELDS - 1)] = it + 1;
-    st->e->ok |= (1u << (st->f & (MAX_FIELDS - 1)));
+    c->e->elen[idx] = st->wrote;
+    c->e->fcount[key] = it + 1;
+    c->e->ok |= (1u << key);
     if (p->next_off == 0)
         return 1;
     __u64 adv = 0;
@@ -324,24 +366,21 @@ static long walk_node(__u32 it, void *pst)
     return 0;
 }
 
-/* Throwaway terminal buffer for a navigation-only pre. Global, not
- * stack: the frames of the nested loops share the 512-byte BPF stack.
- * CPUs may race on it; the contents are never read. */
-static __u8 nav_scratch[ENTRY_CAP];
-
 /* One field: reach the chain head (or, for a scalar, leave the cursor
  * wherever pre lands), then walk. */
-static long run_field(__u32 f, void *pst)
+static long run_field(__u32 f, void *pctx)
 {
-    struct walk_state *st = pst;
+    struct walk_ctx *c = pctx;
+    struct walk_state *st = vm_state();
+    if (!st)
+        return 1;
     __u32 key = f & (MAX_FIELDS - 1);
     struct walk_prog *p = bpf_map_lookup_elem(&programs, &key);
     if (!p)
         return 0;
-    st->p = p;
     st->f = key;
 
-    run_section(st, p->pre, p->n_pre, 0, nav_scratch);
+    run_section(c, st, 0, p->n_pre, 0);
     st->node = st->cur;
 
     __u32 mi = p->max_iters;
@@ -349,7 +388,7 @@ static long run_field(__u32 f, void *pst)
         mi = 1;
     if (mi > MAX_ITERS)
         mi = MAX_ITERS;
-    bpf_loop(mi, walk_node, st, 0);
+    bpf_loop(mi, walk_node, c, 0);
     return 0;
 }
 
@@ -429,6 +468,9 @@ int on_tcp_probe(struct bpf_raw_tracepoint_args *ctx)
         return 0;
     last_ns = tnow;
 
+    struct walk_state *st = vm_state();
+    if (!st)
+        return 0;
     struct walk_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
     if (!e) {
         ring_full++;
@@ -445,12 +487,11 @@ int on_tcp_probe(struct bpf_raw_tracepoint_args *ctx)
     e->plen = sg.plen;
     e->linear = sg.linear;
 
-    struct walk_state st = {};
-    st.regs[0] = ctx->args[0]; /* struct sock * */
-    st.regs[1] = ctx->args[1]; /* struct sk_buff * */
-    st.regs[2] = sg.payload;
-    st.e = e;
-    bpf_loop(nf, run_field, &st, 0);
+    st->regs[0] = ctx->args[0]; /* struct sock * */
+    st->regs[1] = ctx->args[1]; /* struct sk_buff * */
+    st->regs[2] = sg.payload;
+    struct walk_ctx c = { .e = e };
+    bpf_loop(nf, run_field, &c, 0);
 
     emitted++;
     bpf_ringbuf_submit(e, 0);
