@@ -393,10 +393,18 @@ query overrides with `(kind)`. This is what tcpwalk2 does with a
 54 KB schema table rendered at build time from one kernel's BTF — a
 table that, checked here, had `snd_cwnd` forty bytes from where this
 kernel keeps it. The kernel side is derived from tcpwalk2's VM with
-one structural change: every op runs as a `bpf_loop` step, so the
+two structural changes. Every op runs as a `bpf_loop` step, so the
 verifier walks the dispatch once per call site instead of once per
-slot per section per field, which on this kernel was the difference
-between a million-instruction rejection and a load.
+slot per section per field. And the VM's mutable state lives in a
+one-element per-CPU array, not on the stack, with the callbacks
+reaching it by lookup and only the event pointer riding on the stack as
+the callback context: a callback loop is verified once only when its
+entry state converges with an earlier one, and the verifier does not
+track map memory, so nothing the ops do can tell one iteration from the
+last. With the state on the stack, the 7.2.7 verifier backports left
+the object simulating every one of its 8 × 16 × 8 nested iterations and
+hitting the million-instruction limit; with it in the map, the whole
+object verifies in under 5k instructions on every kernel in the matrix.
 
 The event carries the socket's 4-tuple, state and the segment's
 sequence number and lengths, read through CO-RE in a fixed prologue,
@@ -478,13 +486,13 @@ buffer held before — a response head where curl's body should be.
   run also caught the 6.6 verifier rejecting the wire tap's
   `bpf_skb_load_bytes` size as possibly zero, since a verifier before
   6.9 does not narrow a register on a `!= 0` branch; the bound is now
-  rebuilt by arithmetic. bpf-next runs but does not gate. The open
-  finding is the walk VM: its three nested `bpf_loop`s verify in 14k
-  instructions on 6.12 and 6.18 and on this host's 7.2.6, but stable
-  7.2.7 backported a batch of verifier precision fixes for `bpf_loop`
-  callbacks, after which `step` alone costs 850k and the object hits the
-  one-million limit on 7.2.8 and on bpf-next. That row gates, because a
-  stable kernel rejecting it is the matrix's job to say. `make veristat-matrix` runs the same thing
+  rebuilt by arithmetic. The second catch was the walk VM: on this
+  host's 7.2.6 it verified in 14k instructions, but stable 7.2.7
+  backported a batch of verifier precision fixes for `bpf_loop`
+  callbacks, after which the lvh 7.2.8 image and bpf-next ran it to the
+  one-million limit. Moving the VM's state into a per-CPU map (see the
+  walk VM section) brought it to under 5k everywhere. bpf-next runs but
+  does not gate. `make veristat-matrix` runs the same thing
   locally with lvh + a static qemu (Linux, KVM, root for the VM), and
   `make veristat` is the single-kernel check against this host.
 
