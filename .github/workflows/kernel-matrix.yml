@@ -32,12 +32,12 @@ name: kernel-matrix
 # generated from the runner's own BTF by `make bpf`. So the gating lines are
 # the LTS and stable kernels from 6.6 up. bpf-next is run but does not gate:
 # it is a moving target, and what it shows tends to arrive in stable soon
-# after — the walk VM's three nested bpf_loops verify in 14k instructions on
-# 6.12 and 6.18, but 7.2.7 backported a batch of verifier precision fixes
+# after. Case in point: the walk VM's three nested bpf_loops verified in 14k
+# instructions until 7.2.7 backported a batch of verifier precision fixes
 # for bpf_loop callbacks ("backtracking shouldn't clear outer frame R1-R5
-# for callbacks" and kin), after which the same object costs 850k in `step`
-# alone and hits the 1M limit on 7.2.8 and on bpf-next. 7.2.6 still loads
-# it. That 7.2 row is a real rejection on a stable kernel, so it gates.
+# for callbacks" and kin), after which the same object cost 850k in `step`
+# alone and hit the 1M limit on 7.2.8 and on bpf-next. Its state now lives
+# in a per-CPU map the verifier does not track, and it verifies in under 5k.
 
 on:
   workflow_dispatch:
